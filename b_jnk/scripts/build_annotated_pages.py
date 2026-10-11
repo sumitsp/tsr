@@ -5,9 +5,10 @@ The label CSV is the one b_jnk_creator writes (folder name, image name, value,
 subtype). OCR_DIR is the main Tesseract output folder, with one text file per
 chart folder:
 
-    OCR_DIR/<folder name>/ocr/<folder name>.txt
+    OCR_DIR/<folder name>/ocr/<folder name>_prelim.txt
 
-The chart is found by the txt name, so a txt one level up or down still counts.
+The chart is the folder above "ocr". The txt name without TXT_SUFFIX also
+counts, so a txt one level up or down is still found.
 
 Pages inside it start with "===== 1.png =====". A label for 1.png takes that
 page; if the extension differs (labels on .png, OCR on .jpg) the name without
@@ -36,8 +37,10 @@ from src.preprocessing.tesseract_txt import split_pages  # noqa: E402
 
 # ============================== RUN CONFIG ==============================
 LABELS_CSV = Path(r"C:\Users\sumit.pandey\Desktop\Imaging\blank_junk_labels.csv")
-# Main Tesseract output folder: each chart is OCR_DIR/<folder>/ocr/<folder>.txt
+# Main Tesseract output folder: each chart is OCR_DIR/<folder>/ocr/<folder>_prelim.txt
 OCR_DIR = Path(r"C:\Users\sumit.pandey\Desktop\Imaging\extracted_text_tesseract")
+# End of the txt name after the folder name ("" for <folder>.txt).
+TXT_SUFFIX = "_prelim"
 OUT_JSONL = ROOT / "data" / "raw" / "annotated_pages.jsonl"
 # ========================================================================
 
@@ -62,17 +65,30 @@ def _label(value: str, subtype: str) -> str | None:
     return None
 
 
-def chart_files(ocr_dir: Path) -> dict[str, Path]:
-    """Chart folder name -> its txt: OCR_DIR/<folder>/ocr/<folder>.txt.
+def chart_names(path: Path) -> set[str]:
+    """Chart folder names a txt can belong to: the folder above "ocr", and the
+    txt name without TXT_SUFFIX."""
+    stem = path.stem
+    if TXT_SUFFIX and stem.casefold().endswith(TXT_SUFFIX.casefold()):
+        stem = stem[: -len(TXT_SUFFIX)]
+    names = {stem.casefold()}
+    folder = path.parent.parent if path.parent.name.casefold() == "ocr" else path.parent
+    if folder != path.parent or folder.name.casefold() == stem.casefold():
+        names.add(folder.name.casefold())
+    return names
 
-    The txt name is the chart folder name. A txt without "===== page ====="
-    markers is not a chart dump and is skipped.
+
+def chart_files(ocr_dir: Path) -> dict[str, Path]:
+    """Chart folder name -> its txt: OCR_DIR/<folder>/ocr/<folder>_prelim.txt.
+
+    A txt without "===== page =====" markers is not a chart dump and is skipped.
     """
     found: dict[str, Path] = {}
     for path in sorted(ocr_dir.rglob("*.txt")):
         if not split_pages(path.read_text(encoding="utf-8", errors="replace")[:4000]):
             continue
-        found.setdefault(path.stem.casefold(), path)
+        for name in chart_names(path):
+            found.setdefault(name, path)
     return found
 
 
@@ -85,7 +101,7 @@ def index_ocr(ocr_dir: Path) -> tuple[dict[tuple[str, str], str], int]:
             name = Path(name).name.casefold()
             by_page.setdefault((folder_key, name), text)
             by_page.setdefault((folder_key, Path(name).stem), text)
-    return by_page, len(charts)
+    return by_page, len(set(charts.values()))
 
 
 def text_for(folder: str, image_name: str, by_page: dict[tuple[str, str], str]) -> str | None:
