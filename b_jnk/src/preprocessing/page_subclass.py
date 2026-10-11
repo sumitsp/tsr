@@ -65,6 +65,19 @@ END_RECORD_PHRASES = (
     "end of the chart",
     "end of this record",
 )
+# Fax header and confidentiality footer. Every page of a faxed chart carries
+# them, so they name a junk page's subtype but never make a page junk.
+FAX_STAMP = (
+    "facsimile", "this fax", "intended recipient", "this message is intended",
+    "if you have received this",
+)
+# The fields of a fax cover form. With two of them, the stamp is on the cover itself.
+FAX_FIELD_RE = re.compile(
+    r"(?<![a-z])(fax\s*to|fax\s*from|fax\s*#|fax\s*:|attn|attention|re\s*:|comments?\s*:|"
+    r"pages?\s*:|#\s*of\s*pages|number\s+of\s+pages|to\s*:|from\s*:)",
+    re.I,
+)
+FAX_FIELDS_MIN = 2
 TRIGGERS: dict[str, tuple[str, ...]] = {
     "JUNK_COVER_PAGE": COVER_ANY_LENGTH + COVER_SHORT_ONLY,
     "JUNK_RECORD_REQUEST": (
@@ -98,6 +111,16 @@ CLINICAL_SECTION_RE = re.compile(
     r"labs?|imaging|diagnos[ie]s|assessment|immunizations?|history|plan of (?:care|treatment))(?![a-z])",
     re.I,
 )
+# Wider than the section names: the wording of a note, an order, or a dose.
+# Only the cover and letter/fax rule uses it, so the invoice rule is unchanged.
+NOTE_CONTENT_RE = re.compile(
+    CLINICAL_SECTION_RE.pattern
+    + r"|(?<![a-z])(hpi|mdm|ros|dx|chief complaint|physical exam|exam|impression|"
+    r"consultation|referred by|pleasure of seeing|seen today|follow[- ]?up|f/u|"
+    r"med rec|discharge|admission|surgery|prescribed|allerg[a-z]*|intolerances?)(?![a-z])"
+    r"|\b[A-TV-Z]\d{2}\.\d{1,4}\b|\b\d+(?:\.\d+)?\s?(?:mg|mcg|ml)\b",
+    re.I,
+)
 
 MODEL_TAG_TO_SUBTYPE: dict[str, str] = {
     **{s: s for s in JUNK_SUBTYPES},
@@ -127,9 +150,10 @@ def _ci_token(token: str) -> str:
 def _phrase_re(phrase: str) -> re.Pattern[str]:
     # Word-start match; trailing letters allowed ("invoiced", "accepted").
     # A lowercase letter running into an uppercase letter is also a word start.
-    # OCR often glues the patient name to the next heading ("NameHEADING").
+    # OCR often glues the patient name to the next heading ("NameHEADING"),
+    # and a date to the next line ("09/11/2024To Whom").
     body = r"\s+".join(_ci_token(token) for token in phrase.split())
-    return re.compile(r"(?:(?<![A-Za-z0-9])|(?<=[a-z])(?=[A-Z]))" + body)
+    return re.compile(r"(?:(?<![A-Za-z0-9])|(?<=[a-z0-9])(?=[A-Z]))" + body)
 
 
 MATCHERS: dict[str, re.Pattern[str]] = {
@@ -238,14 +262,20 @@ def shell_page_reason(text: str) -> tuple[str, str] | None:
 
     A cover sheet says cover page or cover sheet at any length. Accept and
     unaccept count only on a short page. A letter or fax says one of the
-    letter phrases. A clinical note is left alone when the only hit is a soft
-    opening such as "please find attached".
+    letter phrases. A page with clinical content is left alone: a faxed note
+    carries "this fax" and "intended recipient" in its header and footer, and
+    a consult letter opens with "Dear Dr.".
     """
+    if NOTE_CONTENT_RE.search(text or ""):
+        return None
+    fields = {re.sub(r"\s+", "", m.lower()) for m in FAX_FIELD_RE.findall(text or "")}
+    stamp_counts = len(fields) >= FAX_FIELDS_MIN
     chosen = {
-        subtype: hits
+        subtype: [phrase for phrase in hits if stamp_counts or phrase not in FAX_STAMP]
         for subtype, hits in _candidate_hits(text).items()
         if subtype in {"JUNK_COVER_PAGE", "JUNK_LETTER_FAX"}
     }
+    chosen = {subtype: hits for subtype, hits in chosen.items() if hits}
     if not chosen:
         return None
     if len(chosen) == 1:
