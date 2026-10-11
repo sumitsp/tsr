@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Train TF-IDF baseline on KEEP / BLANK / JUNK flags; evaluate safety metrics."""
+"""Train TF-IDF baseline on KEEP / BLANK / JUNK flags; evaluate safety metrics.
+
+Real pages are the v0.3 set plus the b_jnk_creator labels in data/raw/annotated_pages.jsonl.
+"""
 
 from __future__ import annotations
 
@@ -17,7 +20,7 @@ from src.inference.predict import PageClassifierService  # noqa: E402
 from src.models.classifiers import train_hierarchical, train_tfidf_flat  # noqa: E402
 from src.models.decision import DecisionConfig, decide_from_proba  # noqa: E402
 from src.models.split import describe_split, group_train_test_split  # noqa: E402
-from src.preprocessing.dataset import filter_training_rows, load_jsonl  # noqa: E402
+from src.preprocessing.dataset import filter_training_rows, load_annotated_pages, load_jsonl  # noqa: E402
 
 
 def _load_cfg(path: Path) -> dict:
@@ -45,7 +48,12 @@ def main() -> int:
         require_train_eligible=cfg["training"]["require_train_eligible"],
         include_medium_keep=cfg["training"]["include_medium_keep"],
     )
-    print(f"Loaded {len(rows)} pages; train pool {len(train_pool)}")
+    annotated = load_annotated_pages(
+        ROOT / cfg["bert"].get("annotated_jsonl", "data/raw/annotated_pages.jsonl"), rows
+    )
+    # Tagged pages join the pool, so they are in the train / test split too.
+    train_pool += annotated
+    print(f"Loaded {len(rows)} pages + {len(annotated)} tagged pages; train pool {len(train_pool)}")
     if len(train_pool) < 4:
         print("ERROR: train pool too small. Collect more labeled data.")
         return 2

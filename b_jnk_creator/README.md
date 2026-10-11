@@ -68,8 +68,9 @@ Open http://127.0.0.1:8768. Keys and buttons are the same as `main.py`. The term
 ## Retrain the page model on these labels
 
 ```bash
-python b_jnk/scripts/build_annotated_pages.py   # labels CSV + Document Intelligence text -> data/raw/annotated_pages.jsonl
+python b_jnk/scripts/build_annotated_pages.py   # labels CSV + Tesseract txt -> data/raw/annotated_pages.jsonl
 python b_jnk/scripts/train_bert.py              # synthetic + real + annotated pages; checks on real pages, then saves models/bert_page
+python b_jnk/scripts/train_baseline.py          # TF-IDF word model on real + annotated pages (used when BERT is missing)
 ```
 
-Set `LABELS_CSV` and `OCR_DIR` in `build_annotated_pages.py` first. `infer.py` then uses the new model, and the word rules (invoice, cover sheet, letter / fax, end of record) still run on top of it.
+Set `LABELS_CSV` and `OCR_DIR` (the Tesseract output folder, `<folder>/<folder>.txt`) in `build_annotated_pages.py` first. `infer.py` then uses the new model, and the word rules (invoice, cover sheet, letter / fax, end of record) still run on top of it.

@@ -8,6 +8,8 @@
 Evaluation (every number comes from real pages the model did not train on):
   1. synthetic_only  - train on synthetic pages, test on ALL real pages
   2. real_2fold      - train on synthetic + half the real pages, test on the other half, then swap
+Real pages include the b_jnk_creator labels (data/raw/annotated_pages.jsonl); those also
+get their own real_2fold_tagged summary.
 The final model trains on synthetic + all real pages and is saved to models/bert_page.
 Synthetic pages are never used for testing: BERT can learn Claude's writing style.
 """
@@ -90,7 +92,7 @@ def _norm_text(text: str) -> str:
 
 
 def annotated_examples(cfg: dict) -> list[Example]:
-    """Image labels joined to Document Intelligence text. Missing file = none."""
+    """Image labels joined to Tesseract page text. Missing file = none."""
     rel = cfg["bert"].get("annotated_jsonl") or "data/raw/annotated_pages.jsonl"
     path = ROOT / rel
     if not path.is_file():
@@ -437,6 +439,10 @@ def main() -> int:
     synth = synthetic_examples(cfg)
     real = real_examples(cfg)
     annotated, dupes, conflicts = new_annotated(annotated_examples(cfg), synth + real)
+    # Tagged pages are real pages too: each is tested once in the 2-fold check, and a
+    # chart folder stays on one side.
+    real = real + annotated
+    tagged = {e.uid for e in annotated}
     assign_folds(real)
     labels_csv = write_real_labels(real)
     print(f"synthetic pages: {len(synth)} {dict(collections.Counter(e.label for e in synth))}")
@@ -474,6 +480,11 @@ def main() -> int:
         combined = summarize(fold_rows)
         print_summary("real_2fold combined (every real page tested once)", combined)
         report["runs"]["real_2fold"] = combined
+        tagged_rows = [r for r in fold_rows if r["page_id"] in tagged]
+        if tagged_rows:
+            tagged_summary = summarize(tagged_rows)
+            print_summary("real_2fold, tagged pages only (b_jnk_creator labels)", tagged_summary)
+            report["runs"]["real_2fold_tagged"] = tagged_summary
         all_rows += fold_rows
 
         pred_path = ROOT / "reports" / "bert_eval_pages.csv"
@@ -484,7 +495,7 @@ def main() -> int:
         print(f"per-page results -> {pred_path}")
 
     if not args.eval_only:
-        train = synth + real * copies + annotated * copies
+        train = synth + real * copies
         model, tok = train_model(train, cfg, device, epochs=epochs, base_model=base_model, tag="final")
         out_dir = ROOT / bc["model_dir"]
         tmp_dir = out_dir.with_name(out_dir.name + ".tmp")
@@ -499,7 +510,7 @@ def main() -> int:
             "epochs": epochs,
             "train_pages": {
                 "synthetic": len(synth),
-                "real": len(real),
+                "real": len(real) - len(annotated),
                 "annotated": len(annotated),
                 "real_copies": copies,
             },

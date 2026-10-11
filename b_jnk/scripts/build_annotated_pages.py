@@ -1,15 +1,19 @@
 #!/usr/bin/env python3
-"""Join image labels to Azure Document Intelligence text for BERT training.
+"""Join image labels to Tesseract page text for BERT and TF-IDF training.
 
 The label CSV is the one b_jnk_creator writes (folder name, image name, value,
-subtype). OCR_DIR contains those same folders. Each chart's text is:
+subtype). OCR_DIR is the Tesseract output (ts_ocr.py), with one text file per
+chart folder:
 
-    OCR_DIR/<folder name>/ocr/<folder name>_final2.json
+    OCR_DIR/<folder name>/<folder name>.txt
 
-Image 1.png is page 1 in that JSON. Image 2.png is page 2.
+Pages inside it start with "===== 1.png =====". A label for 1.png takes that
+page; if the extension differs (labels on .png, OCR on .jpg) the name without
+extension is matched.
 
 Writes data/raw/annotated_pages.jsonl. That file is added on top of the
-existing training pages by scripts/train_bert.py. Empty label rows are skipped.
+existing training pages by scripts/train_bert.py and scripts/train_baseline.py.
+Empty label rows are skipped.
 
 Edit RUN CONFIG, then:
 
@@ -26,16 +30,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from src.preprocessing.document_intelligence import (  # noqa: E402
-    iter_analyze_results,
-    load_json,
-    pages_in_result,
-)
+from src.preprocessing.tesseract_txt import chart_txt, split_pages  # noqa: E402
 
 # ============================== RUN CONFIG ==============================
 LABELS_CSV = Path(r"C:\Users\sumit.pandey\Desktop\Imaging\blank_junk_labels.csv")
-# Parent of the chart folders. Each chart is OCR_DIR/<folder>/ocr/<folder>_final2.json.
-OCR_DIR = Path(r"C:\Users\sumit.pandey\Desktop\Imaging\doc_intelligence")
+# Tesseract output: each chart is OCR_DIR/<folder>/<folder>.txt
+OCR_DIR = Path(r"C:\Users\sumit.pandey\Desktop\Imaging\extracted_text_tesseract")
 OUT_JSONL = ROOT / "data" / "raw" / "annotated_pages.jsonl"
 # ========================================================================
 
@@ -60,42 +60,26 @@ def _label(value: str, subtype: str) -> str | None:
     return None
 
 
-def final2_json(chart_dir: Path) -> Path | None:
-    """OCR_DIR/<folder>/ocr/<folder>_final2.json, ignoring other files in ocr."""
-    ocr = chart_dir / "ocr"
-    if not ocr.is_dir():
-        return None
-    want = f"{chart_dir.name}_final2".casefold()
-    matches = [path for path in ocr.glob("*.json") if path.stem.casefold() == want]
-    if len(matches) == 1:
-        return matches[0]
-    return None
-
-
-def index_ocr(ocr_dir: Path) -> dict[tuple[str, int], str]:
-    """(folder, page number) -> page text from each <folder>_final2.json."""
-    by_page: dict[tuple[str, int], str] = {}
+def index_ocr(ocr_dir: Path) -> dict[tuple[str, str], str]:
+    """(folder, image name) and (folder, name without extension) -> page text."""
+    by_page: dict[tuple[str, str], str] = {}
     for chart in sorted(path for path in ocr_dir.iterdir() if path.is_dir()):
-        path = final2_json(chart)
+        path = chart_txt(chart)
         if path is None:
             continue
-        try:
-            payload = load_json(path)
-        except json.JSONDecodeError:
-            print(f"skip unreadable json: {path}", file=sys.stderr)
-            continue
-        pages = [page for result in iter_analyze_results(payload) for page in pages_in_result(result)]
         folder_key = chart.name.casefold()
-        for number, text in pages:
-            by_page[(folder_key, number)] = text
+        for name, text in split_pages(path.read_text(encoding="utf-8", errors="replace")):
+            name = Path(name).name.casefold()
+            by_page.setdefault((folder_key, name), text)
+            by_page.setdefault((folder_key, Path(name).stem), text)
     return by_page
 
 
-def text_for(folder: str, image_name: str, by_page: dict[tuple[str, int], str]) -> str | None:
-    stem = Path(image_name).stem
-    if not stem.isdigit():
-        return None
-    return by_page.get((folder.casefold(), int(stem)))
+def text_for(folder: str, image_name: str, by_page: dict[tuple[str, str], str]) -> str | None:
+    name = Path(image_name).name.casefold()
+    folder_key = folder.casefold()
+    found = by_page.get((folder_key, name))
+    return found if found is not None else by_page.get((folder_key, Path(name).stem))
 
 
 def build(labels_csv: Path, ocr_dir: Path, out_path: Path) -> dict[str, int]:
@@ -146,42 +130,6 @@ def build(labels_csv: Path, ocr_dir: Path, out_path: Path) -> dict[str, int]:
     return counts
 
 
-def _names(value: object, limit: int = 12) -> str:
-    if isinstance(value, dict):
-        return ", ".join(list(value)[:limit])
-    if isinstance(value, list):
-        return f"list[{len(value)}]"
-    return type(value).__name__
-
-
-def describe_ocr(ocr_dir: Path) -> None:
-    """Print field names only, so a missed text field can be seen without page text."""
-    for chart in sorted(path for path in ocr_dir.iterdir() if path.is_dir()):
-        path = final2_json(chart)
-        if path is None:
-            continue
-        try:
-            payload = load_json(path)
-        except json.JSONDecodeError:
-            continue
-        results = list(iter_analyze_results(payload))
-        print(f"json {path.name} root: {_names(payload)}")
-        if not results:
-            return
-        result = results[0]
-        print(f"result: {_names(result)}")
-        pages = result.get("pages")
-        if isinstance(pages, list) and pages and isinstance(pages[0], dict):
-            print(f"page: {_names(pages[0])}")
-            lines = pages[0].get("lines")
-            if isinstance(lines, list) and lines:
-                print(f"line: {_names(lines[0])}")
-        elif isinstance(pages, dict) and pages:
-            first = next(iter(pages.values()))
-            print(f"page: {_names(first)}")
-        return
-
-
 def main() -> int:
     counts = build(LABELS_CSV, OCR_DIR, OUT_JSONL)
     print(f"wrote {counts['written']} pages -> {OUT_JSONL}")
@@ -189,11 +137,7 @@ def main() -> int:
         f"unlabeled {counts['unlabeled']}   bad label {counts['bad_label']}   "
         f"no ocr {counts['no_ocr']}   empty text {counts['empty_text']}"
     )
-    if counts["written"] == 0:
-        if counts["empty_text"]:
-            describe_ocr(OCR_DIR)
-        return 1
-    return 0
+    return 0 if counts["written"] else 1
 
 
 if __name__ == "__main__":

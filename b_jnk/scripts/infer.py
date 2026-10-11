@@ -59,7 +59,6 @@ BERT_DIR = ROOT / "models" / "bert_page"
 CONFIG_PATH = ROOT / "configs" / "default.json"
 # ---------------------------------------------------------------------------
 
-PAGE_SPLIT_TXT = re.compile(r"=====+\s*([^\n=]+?)\s*=====+")
 IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".tif", ".tiff", ".bmp", ".webp", ".pdf"}
 OCR_SUFFIXES = {".json", ".txt"}
 
@@ -80,6 +79,7 @@ from src.models.bert_classifier import bert_available  # noqa: E402
 from src.models.classifiers import FlatClassifier  # noqa: E402
 from src.models.decision import DecisionConfig  # noqa: E402
 from src.preprocessing.docling_page import extract_docling_page  # noqa: E402
+from src.preprocessing.tesseract_txt import PAGE_SPLIT_TXT, clean_ocr_text as _clean_ocr_text  # noqa: E402
 
 
 COLUMNS = [
@@ -102,17 +102,6 @@ COLUMNS = [
 def _natural_page_key(name: str):
     stem = Path(name).stem
     return (0, int(stem)) if stem.isdigit() else (1, stem.lower())
-
-
-def _clean_ocr_text(text: str) -> str:
-    """Light normalize for non-Docling dumps (HTML comments / whitespace only)."""
-    if not text:
-        return ""
-    text = text.replace("\u2028", "\n").replace("\u2029", "\n").replace("\xa0", " ")
-    text = re.sub(r"<!--.*?-->", " ", text, flags=re.S)
-    text = re.sub(r"[ \t]+", " ", text)
-    text = re.sub(r"\n{3,}", "\n\n", text)
-    return text.strip()
 
 
 def _page_record(page_id: str, page_obj) -> dict:
