@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-LOGGER = logging.getLogger("blank_junk_creator")
+LOGGER = logging.getLogger("b_jnk_creator")
 
 IMAGE_EXTENSIONS = frozenset(
     {".jpg", ".jpeg", ".jfif", ".png", ".gif", ".webp", ".bmp", ".tif", ".tiff"}

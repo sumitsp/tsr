@@ -9,10 +9,10 @@ from pathlib import Path
 from typing import Callable
 from urllib.parse import parse_qs, urlparse
 
-from blank_junk_creator.catalog import ImageItem
-from blank_junk_creator.labels import SUBTYPES, VALUES, LabelStore
+from b_jnk_creator.catalog import ImageItem
+from b_jnk_creator.labels import SUBTYPES, VALUES, LabelStore
 
-LOGGER = logging.getLogger("blank_junk_creator")
+LOGGER = logging.getLogger("b_jnk_creator")
 _PAGE = Path(__file__).resolve().parent / "static" / "index.html"
 ReadImage = Callable[[ImageItem], tuple[bytes, str]]
 

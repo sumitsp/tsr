@@ -107,6 +107,36 @@ class LabelStore:
                 raise
             return dict(row)
 
+    def add_missing(self, rows: list[tuple[str, str, str, str]]) -> int:
+        """Append (folder, image, value, subtype) rows that have no row yet. One write.
+
+        A page that already has a row keeps it, so a hand label is never overwritten.
+        """
+        added: list[tuple[str, str]] = []
+        with self._lock:
+            for folder, image_name, value, subtype in rows:
+                if value not in VALUES or (subtype and subtype not in SUBTYPES):
+                    raise ValueError(f"bad label {value!r} / {subtype!r} for {folder}/{image_name}")
+                key = (folder, image_name)
+                if key in self._index:
+                    continue
+                record = self._blank(folder, image_name)
+                record["value"] = value
+                record["subtype"] = subtype if value == "JUNK" else ""
+                self._index[key] = len(self._rows)
+                self._rows.append(record)
+                added.append(key)
+            if not added:
+                return 0
+            try:
+                self._write()
+            except Exception:
+                del self._rows[len(self._rows) - len(added):]
+                for key in added:
+                    del self._index[key]
+                raise
+        return len(added)
+
     def _write(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         tmp = self.path.with_suffix(self.path.suffix + ".tmp")

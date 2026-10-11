@@ -1,4 +1,4 @@
-# blank_junk_creator
+# b_jnk_creator
 
 Label chart images as Keep, Blank, or a junk subtype. The page runs on this machine. Images are read from a local folder or from Azure Blob. The CSV is written locally.
 
@@ -7,7 +7,7 @@ Each row is one image: `value` (`KEEP`, `BLANK`, or `JUNK`) and `subtype` (empty
 ## Setup
 
 ```bash
-pip install -r blank_junk_creator/requirements.txt
+pip install -r b_jnk_creator/requirements.txt
 az login
 ```
 
@@ -22,7 +22,7 @@ Edit the RUN CONFIG block at the top of `main.py`:
 ## Run
 
 ```bash
-python blank_junk_creator/main.py
+python b_jnk_creator/main.py
 ```
 
 Open the URL it prints (http://127.0.0.1:8767). Images play in order: folder 1 image 1, folder 1 image 2, then the next folder.
@@ -46,3 +46,30 @@ Marks stay on the current image until Enter. Enter writes the whole row, includi
 Back and Previous folder do the same thing with the mouse. Folder and Image, or an image number (1 is the first image of the first folder), jump to a specific page.
 
 Refresh keeps your place. With no saved place, it opens on the first image that has no row yet.
+
+## Tag junk pages from a review sheet
+
+`junk_tagger.py` opens only the pages a review sheet marked as junk, so you only pick the junk type.
+
+The review sheet is an `.xlsx` or `.csv` with a folder column, an id column (`1`, `1.png`), a `Junk Page` column and a `Blank Page` column (Yes / No). The columns are found by name. If a name differs, set `FOLDER_COLUMN`, `ID_COLUMN`, `JUNK_COLUMN` or `BLANK_COLUMN` in RUN CONFIG.
+
+- Junk Page = Yes: the image opens and you tag its type (I, C, R, N, F, O). K and B still work if the sheet was wrong.
+- Blank Page = Yes: written as `BLANK` when the tool starts, without opening the image.
+- Rows go into the same `CSV_PATH` that `main.py` writes. A page that already has a row is never overwritten.
+
+Edit RUN CONFIG at the top of `junk_tagger.py` (`REVIEW_SHEET`, `LOCAL_INPUT` or blob settings, `CSV_PATH`), then:
+
+```bash
+python b_jnk_creator/junk_tagger.py
+```
+
+Open http://127.0.0.1:8768. Keys and buttons are the same as `main.py`. The terminal says how many blank rows were appended and which junk rows had no image.
+
+## Retrain the page model on these labels
+
+```bash
+python b_jnk/scripts/build_annotated_pages.py   # labels CSV + Document Intelligence text -> data/raw/annotated_pages.jsonl
+python b_jnk/scripts/train_bert.py              # synthetic + real + annotated pages; checks on real pages, then saves models/bert_page
+```
+
+Set `LABELS_CSV` and `OCR_DIR` in `build_annotated_pages.py` first. `infer.py` then uses the new model, and the word rules (invoice, cover sheet, letter / fax, end of record) still run on top of it.

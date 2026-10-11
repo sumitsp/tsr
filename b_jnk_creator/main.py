@@ -1,6 +1,6 @@
 """Label local or blob images as Keep, Blank, or a junk subtype. The CSV is written on this machine.
 
-Edit RUN CONFIG, then run:  python blank_junk_creator/main.py
+Edit RUN CONFIG, then run:  python b_jnk_creator/main.py
 Open the printed URL. Enter saves the page and opens the next image.
 """
 
@@ -14,15 +14,15 @@ from pathlib import Path
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from blank_junk_creator.catalog import (
+from b_jnk_creator.catalog import (
     connect_container,
     list_images,
     list_local_images,
     read_blob_image,
     read_local_image,
 )
-from blank_junk_creator.labels import LabelStore
-from blank_junk_creator.server import App, serve
+from b_jnk_creator.labels import LabelStore
+from b_jnk_creator.server import App, serve
 
 # ============================== RUN CONFIG ==============================
 INPUT_SOURCE = "local"  # "local" or "blob"
@@ -45,14 +45,14 @@ HOST = "127.0.0.1"
 PORT = 8767
 # ========================================================================
 
-LOGGER = logging.getLogger("blank_junk_creator")
+LOGGER = logging.getLogger("b_jnk_creator")
 
 
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     source = INPUT_SOURCE.strip().lower()
     if source == "blob" and (not CONTAINER_NAME or CONTAINER_NAME == "YOUR_CONTAINER_NAME"):
-        raise SystemExit("Set CONTAINER_NAME in blank_junk_creator/main.py")
+        raise SystemExit("Set CONTAINER_NAME in b_jnk_creator/main.py")
     if source not in {"local", "blob"}:
         raise SystemExit('INPUT_SOURCE must be "local" or "blob"')
 
