@@ -65,19 +65,18 @@ END_RECORD_PHRASES = (
     "end of the chart",
     "end of this record",
 )
-# Fax header and confidentiality footer. Every page of a faxed chart carries
-# them, so they name a junk page's subtype but never make a page junk.
-FAX_STAMP = (
-    "facsimile", "this fax", "intended recipient", "this message is intended",
-    "if you have received this",
-)
-# The fields of a fax cover form. With two of them, the stamp is on the cover itself.
-FAX_FIELD_RE = re.compile(
-    r"(?<![a-z])(fax\s*to|fax\s*from|fax\s*#|fax\s*:|attn|attention|re\s*:|comments?\s*:|"
-    r"pages?\s*:|#\s*of\s*pages|number\s+of\s+pages|to\s*:|from\s*:)",
+# These name the page itself, so a stray clinical word ("Re: follow up", an
+# ICD code on an HCC stamp) does not save it. "Cover letter" is not here: a
+# consult says "see cover letter from referring office".
+SHELL_STRONG = frozenset(COVER_ANY_LENGTH + COVER_SHORT_ONLY + ("fax cover", "fax transmission", "fax sheet"))
+# The filled-in fields of a fax cover form. A faxed note has at most a
+# "From: ... To: ..." header line.
+FAX_FORM_RE = re.compile(
+    r"(?<![a-z])(fax\s*(?:to|from|#|no\.?|number)?\s*:|to\s*:|from\s*:|pages?\b[^:\n]{0,20}:|"
+    r"re\s*:|subject\s*:|attn\s*:?|attention\s*:)",
     re.I,
 )
-FAX_FIELDS_MIN = 2
+FAX_FORM_MIN_FIELDS = 4
 TRIGGERS: dict[str, tuple[str, ...]] = {
     "JUNK_COVER_PAGE": COVER_ANY_LENGTH + COVER_SHORT_ONLY,
     "JUNK_RECORD_REQUEST": (
@@ -118,7 +117,14 @@ NOTE_CONTENT_RE = re.compile(
     + r"|(?<![a-z])(hpi|mdm|ros|dx|chief complaint|physical exam|exam|impression|"
     r"consultation|referred by|pleasure of seeing|seen today|follow[- ]?up|f/u|"
     r"med rec|discharge|admission|surgery|prescribed|allerg[a-z]*|intolerances?)(?![a-z])"
-    r"|\b[A-TV-Z]\d{2}\.\d{1,4}\b|\b\d+(?:\.\d+)?\s?(?:mg|mcg|ml)\b",
+    r"|\b[A-TV-Z]\d{2}\.\d{1,4}\b|\b\d+(?:\.\d+)?\s?(?:mg|mcg|ml)\b"
+    # A faxed chart page with little text: a continuation, a signature, a
+    # registration sheet, or a section divider. Not bare "notes": a fax cover
+    # has a "Notes:" field.
+    r"|(?<![a-z])(rtc|return\s+(?:in\s+)?\d+|call with concerns|continued|counsel(?:ing|ed)|"
+    r"electronically signed|e-signed|attestation|examined|registration|demographic|"
+    r"patient information|behavioral health|radiology|reports|"
+    r"(?:consult|progress|clinical|nursing|physician|visit|office)\s+notes)(?![a-z])",
     re.I,
 )
 
@@ -264,20 +270,21 @@ def shell_page_reason(text: str) -> tuple[str, str] | None:
     unaccept count only on a short page. A letter or fax says one of the
     letter phrases. A page with clinical content is left alone: a faxed note
     carries "this fax" and "intended recipient" in its header and footer, and
-    a consult letter opens with "Dear Dr.".
+    a consult letter opens with "Dear Dr.". A page that names itself a cover
+    (or fax cover), or is a filled-in fax cover form, is junk anyway.
     """
-    if NOTE_CONTENT_RE.search(text or ""):
-        return None
-    fields = {re.sub(r"\s+", "", m.lower()) for m in FAX_FIELD_RE.findall(text or "")}
-    stamp_counts = len(fields) >= FAX_FIELDS_MIN
     chosen = {
-        subtype: [phrase for phrase in hits if stamp_counts or phrase not in FAX_STAMP]
+        subtype: hits
         for subtype, hits in _candidate_hits(text).items()
         if subtype in {"JUNK_COVER_PAGE", "JUNK_LETTER_FAX"}
     }
-    chosen = {subtype: hits for subtype, hits in chosen.items() if hits}
     if not chosen:
         return None
+    if NOTE_CONTENT_RE.search(text or ""):
+        strong = any(phrase in SHELL_STRONG for hits in chosen.values() for phrase in hits)
+        fields = {re.sub(r"[^a-z]", "", m.lower())[:4] for m in FAX_FORM_RE.findall(text or "")}
+        if not strong and len(fields) < FAX_FORM_MIN_FIELDS:
+            return None
     if len(chosen) == 1:
         subtype, hits = next(iter(chosen.items()))
         return subtype, hits[0]
