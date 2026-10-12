@@ -122,10 +122,6 @@ def main() -> int:
     metrics = evaluate_predictions(y_true, y_pred)
     metrics["model"] = model.name
     metrics["split"] = split_info
-    metrics["dataset_warning"] = (
-        "v0.3 KEEP coverage is much better; BLANK is still tiny (n≈2). "
-        "Treat BLANK predictions as provisional."
-    )
     report_path = ROOT / cfg["paths"]["reports_dir"] / "tfidf_flat_eval.json"
     write_report(report_path, metrics)
     print(json.dumps(metrics, indent=2))
@@ -134,8 +130,8 @@ def main() -> int:
     # How the threshold trades KEEP pages for junk caught on the held-out pages:
     held = [(r.flag, service.predict_one(r.page_id, r.ocr_text)) for r in test if r.flag]
     print("\nSafety-net threshold on held-out pages (TF-IDF alone):")
-    for t in (0.80, 0.90, 0.95, 0.98):
-        hits = [(flag, out) for flag, out in held if out.flag == "JUNK" and (out.p_junk or 0) >= t]
+    for t in (0.50, 0.60, 0.70, 0.80, 0.90, 0.95):
+        hits = [(flag, out) for flag, out in held if (out.p_junk or 0) >= t]
         junk_total = sum(1 for flag, _ in held if flag == "JUNK")
         print(
             f"  p_junk >= {t:.2f}: KEEP pages called junk {sum(1 for f, _ in hits if f == 'KEEP')}"

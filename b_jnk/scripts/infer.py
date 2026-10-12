@@ -61,7 +61,7 @@ CONFIG_PATH = ROOT / "configs" / "default.json"
 # With BERT loaded, TF-IDF (MODEL_PATH) is a second opinion for junk: a page BERT
 # keeps but TF-IDF calls JUNK with p_junk >= this goes to JUNK with review.
 # None turns it off. scripts/train_baseline.py prints what each value costs.
-TFIDF_SAFETY_NET_MIN_P_JUNK: float | None = 0.95
+TFIDF_SAFETY_NET_MIN_P_JUNK: float | None = 0.80
 # ---------------------------------------------------------------------------
 
 IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".tif", ".tiff", ".bmp", ".webp", ".pdf"}
@@ -83,6 +83,7 @@ from src.inference.predict import InferenceResult, PageClassifierService  # noqa
 from src.models.bert_classifier import bert_available  # noqa: E402
 from src.models.classifiers import FlatClassifier  # noqa: E402
 from src.models.decision import DecisionConfig  # noqa: E402
+from src.preprocessing.page_subclass import assign_junk_subtype  # noqa: E402
 from src.preprocessing.protocol import analyze_protocol  # noqa: E402
 from src.preprocessing.docling_page import extract_docling_page  # noqa: E402
 from src.preprocessing.tesseract_txt import PAGE_SPLIT_TXT, clean_ocr_text as _clean_ocr_text  # noqa: E402
@@ -476,17 +477,19 @@ def _safety_net(r: InferenceResult, net: PageClassifierService, page: dict) -> I
     """BERT kept the page; TF-IDF is sure it is junk. A clinical image is never moved."""
     text = page.get("ocr_text", "")
     second = net.predict_one(r.page_id, text, content_meta=page.get("content_meta"))
-    if second.flag != "JUNK" or (second.p_junk or 0) < TFIDF_SAFETY_NET_MIN_P_JUNK:
+    # p_junk alone decides: TF-IDF's own JUNK call needs 0.85, which would hide a lower cutoff.
+    if second.p_junk is None or second.p_junk < TFIDF_SAFETY_NET_MIN_P_JUNK:
         return r
     if analyze_protocol(text).retain_clinical_image:
         return r
+    subtype = second.subclass if second.flag == "JUNK" and second.subclass else assign_junk_subtype(text).subclass
     return replace(
         r,
         flag="JUNK",
         review_required=True,
-        audit_tag=second.audit_tag,
-        subclass=second.subclass,
-        subclass_reason=second.subclass_reason,
+        audit_tag=subtype,
+        subclass=subtype,
+        subclass_reason=second.subclass_reason if subtype == second.subclass else "tfidf_safety_net",
         decision_reason=f"{r.decision_reason}+tfidf_safety_net:{second.p_junk:.3f}",
         top_evidence=f"tfidf_p_junk:{second.p_junk:.3f}",
     )
