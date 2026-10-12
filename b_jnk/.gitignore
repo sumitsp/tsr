@@ -29,3 +29,7 @@ synthetic/prompts/
 synthetic/checked/*
 !synthetic/checked/clean.jsonl
 synthetic/synthetic_all_*.jsonl
+
+# API keys for synthetic generation (Mac only)
+.env
+synthetic_v2/batches.json

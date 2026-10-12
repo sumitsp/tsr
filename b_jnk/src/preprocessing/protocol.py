@@ -113,15 +113,22 @@ CLINICAL_IMAGE_PATTERNS: tuple[str, ...] = (
     r"wound\s*(?:photo|image|tracking|care)",
     r"dermatolog(?:y|ic)\s*(?:photo|image|lesion)",
     r"lesion\s*(?:photo|image|capture)",
-    r"endoscop(?:y|ic)",
-    r"colonoscop(?:y|ic)",
+    r"(?:endoscop|colonoscop)(?:y|ic)\s*(?:photo|image|picture|still|snapshot)s?",
     r"retinal\s*(?:scan|image|photo|photo)",
     r"fundus\s*(?:photo|image|exam)",
-    r"ophthalmolog",
     r"clinical\s*(?:photo|image|imaging)",
     r"oct\s*(?:nerve|mac|scan)",
     r"slit\s*lamp",
 )
+
+# A specialty name alone. An image page carries little text besides it; on a longer
+# page it is a letterhead or a title ("Granite Peaks Endoscopy" on a fax cover).
+CLINICAL_IMAGE_SHORT_PAGE_PATTERNS: tuple[str, ...] = (
+    r"endoscop(?:y|ic)",
+    r"colonoscop(?:y|ic)",
+    r"ophthalmolog",
+)
+CLINICAL_IMAGE_SHORT_PAGE_MAX_WORDS = 60
 
 DEMOGRAPHIC_PATTERNS: tuple[str, ...] = (
     r"patient\s*demographics?",
@@ -148,6 +155,7 @@ def _compile(pats: tuple[str, ...] | list[str]) -> list[re.Pattern[str]]:
 _BLANK = {k: _compile(v) for k, v in BLANK_PATTERNS.items()}
 _JUNK = {k: _compile(v) for k, v in JUNK_PATTERNS.items()}
 _CLINICAL_IMAGE = _compile(CLINICAL_IMAGE_PATTERNS)
+_CLINICAL_IMAGE_SHORT_PAGE = _compile(CLINICAL_IMAGE_SHORT_PAGE_PATTERNS)
 _DEMOGRAPHIC = _compile(DEMOGRAPHIC_PATTERNS)
 
 
@@ -176,7 +184,10 @@ def _first_hits(
 
 def analyze_protocol(ocr_text: str) -> ProtocolHit:
     text = collapse_whitespace(normalize_unicode(ocr_text or ""))
-    clinical = any(p.search(text) for p in _CLINICAL_IMAGE)
+    clinical = any(p.search(text) for p in _CLINICAL_IMAGE) or (
+        len(text.split()) <= CLINICAL_IMAGE_SHORT_PAGE_MAX_WORDS
+        and any(p.search(text) for p in _CLINICAL_IMAGE_SHORT_PAGE)
+    )
     demo = any(p.search(text) for p in _DEMOGRAPHIC)
 
     evidence: list[str] = []
