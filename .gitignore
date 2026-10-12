@@ -76,3 +76,6 @@ credentials.json
 
 # Jupyter
 .ipynb_checkpoints/
+
+# Code-sharing copy of b_jnk (kept local, not in git)
+b_jnk_v3/
