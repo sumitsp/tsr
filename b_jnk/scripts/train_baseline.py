@@ -42,50 +42,65 @@ def main() -> int:
     args = ap.parse_args()
     cfg = _load_cfg(Path(args.config))
 
-    rows = load_jsonl(ROOT / cfg["paths"]["raw_jsonl"])
-    train_pool = filter_training_rows(
+    raw_path = ROOT / cfg["paths"]["raw_jsonl"]
+    rows = load_jsonl(raw_path) if raw_path.is_file() else []
+    if not rows:
+        print(f"real pages file not on this machine: {raw_path}")
+    real_pool = filter_training_rows(
         rows,
         require_train_eligible=cfg["training"]["require_train_eligible"],
         include_medium_keep=cfg["training"]["include_medium_keep"],
     )
-    annotated = load_annotated_pages(
+    tagged = load_annotated_pages(
         ROOT / cfg["bert"].get("annotated_jsonl", "data/raw/annotated_pages.jsonl"), rows
     )
-    # Tagged pages join the pool, so they are in the train / test split too.
-    train_pool += annotated
-    print(f"Loaded {len(rows)} pages + {len(annotated)} tagged pages; train pool {len(train_pool)}")
-    if len(train_pool) < 4:
+    # Synthetic pages only train: they are never in the test split.
+    synth = load_annotated_pages(ROOT / cfg["bert"]["synthetic_clean"], [*rows, *tagged])
+    print(f"Loaded {len(real_pool)} real + {len(tagged)} tagged + {len(synth)} synthetic pages")
+    if len(real_pool) + len(tagged) < 4:
         print("ERROR: train pool too small. Collect more labeled data.")
         return 2
 
-    train, test = group_train_test_split(
-        train_pool,
+    real_train, real_test = group_train_test_split(
+        real_pool,
         test_size=cfg["split"]["test_size"],
         random_state=cfg["split"]["random_state"],
         max_pages_per_template_train=cfg["split"]["max_pages_per_template_train"],
-    )
+    ) if real_pool else ([], [])
+    # Tagged pages are grouped by chart folder; no per-group cap, or long charts lose most pages.
+    tag_train, tag_test = group_train_test_split(
+        tagged,
+        test_size=cfg["split"]["test_size"],
+        random_state=cfg["split"]["random_state"],
+        max_pages_per_template_train=None,
+    ) if tagged else ([], [])
+    train = real_train + tag_train + synth
+    test = real_test + tag_test
     split_info = describe_split(train, test)
-    print("Split:", json.dumps(split_info, indent=2))
+    print("Split:", json.dumps({k: v for k, v in split_info.items() if k != "overlap_groups"}, indent=2))
     if split_info["overlap_groups"]:
         print("ERROR: template leakage across split", split_info["overlap_groups"])
         return 3
 
     tfidf_cfg = cfg["tfidf"]
-    model = train_tfidf_flat(
-        train,
-        classifier=tfidf_cfg["classifier"],
-        retain_cost=cfg["training"]["retain_delete_cost_ratio"],
-        word_ngram_range=tuple(tfidf_cfg["word_ngram_range"]),
-        char_ngram_range=tuple(tfidf_cfg["char_ngram_range"]),
-        word_max_features=tfidf_cfg["word_max_features"],
-        char_max_features=tfidf_cfg["char_max_features"],
-        min_df=tfidf_cfg["min_df"],
-    )
+
+    def fit(pages):
+        return train_tfidf_flat(
+            pages,
+            classifier=tfidf_cfg["classifier"],
+            retain_cost=cfg["training"]["retain_delete_cost_ratio"],
+            word_ngram_range=tuple(tfidf_cfg["word_ngram_range"]),
+            char_ngram_range=tuple(tfidf_cfg["char_ngram_range"]),
+            word_max_features=tfidf_cfg["word_max_features"],
+            char_max_features=tfidf_cfg["char_max_features"],
+            min_df=tfidf_cfg["min_df"],
+        )
+
+    print("Training on the train split for the check…", flush=True)
+    model = fit(train)
     models_dir = ROOT / cfg["paths"]["models_dir"]
     models_dir.mkdir(parents=True, exist_ok=True)
     model_path = models_dir / "tfidf_flat.joblib"
-    model.save(str(model_path))
-    print(f"Saved {model_path}")
 
     decision = DecisionConfig(**cfg["decision"])
     service = PageClassifierService(
@@ -114,6 +129,24 @@ def main() -> int:
     report_path = ROOT / cfg["paths"]["reports_dir"] / "tfidf_flat_eval.json"
     write_report(report_path, metrics)
     print(json.dumps(metrics, indent=2))
+
+    # infer.py's safety net: BERT says KEEP, TF-IDF says JUNK with p_junk >= threshold.
+    # How the threshold trades KEEP pages for junk caught on the held-out pages:
+    held = [(r.flag, service.predict_one(r.page_id, r.ocr_text)) for r in test if r.flag]
+    print("\nSafety-net threshold on held-out pages (TF-IDF alone):")
+    for t in (0.80, 0.90, 0.95, 0.98):
+        hits = [(flag, out) for flag, out in held if out.flag == "JUNK" and (out.p_junk or 0) >= t]
+        junk_total = sum(1 for flag, _ in held if flag == "JUNK")
+        print(
+            f"  p_junk >= {t:.2f}: KEEP pages called junk {sum(1 for f, _ in hits if f == 'KEEP')}"
+            f"/{sum(1 for f, _ in held if f == 'KEEP')}, junk caught "
+            f"{sum(1 for f, _ in hits if f == 'JUNK')}/{junk_total}"
+        )
+
+    print("\nTraining the final model on every page…", flush=True)
+    final = fit(real_pool + tagged + synth)
+    final.save(str(model_path))
+    print(f"Saved {model_path}")
 
     try:
         hier = train_hierarchical(
