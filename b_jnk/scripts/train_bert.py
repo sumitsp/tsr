@@ -227,6 +227,7 @@ def train_model(
     resume_dir: Path | None = None,
     learning_rate: float | None = None,
     keep_weight: float | None = None,
+    class_weights: dict[str, float] | None = None,
 ):
     import torch
     from transformers import AutoModelForSequenceClassification, AutoTokenizer, get_linear_schedule_with_warmup
@@ -248,7 +249,10 @@ def train_model(
         ).to(device)
 
     weights = torch.ones(len(BERT_LABELS))
+    for label, w in (class_weights or {}).items():
+        weights[LABEL_INDEX[label]] = float(w)
     weights[LABEL_INDEX["KEEP"]] = float(bc["keep_weight"] if keep_weight is None else keep_weight)
+    print(f"[{tag}] loss weights: { {lab: round(float(weights[i]), 2) for i, lab in enumerate(BERT_LABELS)} }", flush=True)
     loss_fn = torch.nn.CrossEntropyLoss(weight=weights.to(device))
     lr = float(bc["learning_rate"] if learning_rate is None else learning_rate)
     optim = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=float(bc["weight_decay"]))
@@ -391,7 +395,7 @@ def balance(real: list[Example], synth: list[Example], cfg: dict, seed: int) -> 
     cc = cfg["bert"].get("continue", {})
     target = int(cc.get("class_target", 400))
     max_copies = int(cc.get("max_copies", 4))
-    keep_share = float(cc.get("keep_share", 0.4))
+    keep_share = cc.get("keep_share")  # None: every real KEEP page stays in
     if not cc.get("use_synthetic", True):
         synth = []
     rng = random.Random(seed)
@@ -415,9 +419,13 @@ def balance(real: list[Example], synth: list[Example], cfg: dict, seed: int) -> 
             have += by_real[label] * repeats
             have = have[: max(target, len(by_real[label]))]
         out += have
-    keep_cap = int(len(out) * keep_share / (1 - keep_share))
     keep = list(by_real["KEEP"])
     rng.shuffle(keep)
+    if keep_share is None:
+        out += keep
+        rng.shuffle(out)
+        return out
+    keep_cap = int(len(out) * float(keep_share) / (1 - float(keep_share)))
     if len(keep) < keep_cap:
         extra = list(by_synth["KEEP"])
         rng.shuffle(extra)
@@ -425,6 +433,19 @@ def balance(real: list[Example], synth: list[Example], cfg: dict, seed: int) -> 
     out += keep[:keep_cap]
     rng.shuffle(out)
     return out
+
+
+def class_weights_for(train: list[Example], cfg: dict) -> dict[str, float]:
+    """Loss weight per junk / blank label: sqrt(KEEP pages / label pages), at most max_class_weight.
+    Makes up for the imbalance left when every KEEP page stays in. KEEP keeps its own keep_weight."""
+    cc = cfg["bert"].get("continue", {})
+    cap = float(cc.get("max_class_weight", 3.0))
+    counts = collections.Counter(e.label for e in train)
+    keep = counts.get("KEEP", 0)
+    return {
+        label: round(min(cap, max(1.0, math.sqrt(keep / counts[label]))), 2)
+        for label in BERT_LABELS if label != "KEEP" and counts.get(label)
+    }
 
 
 def show_balance(cfg: dict) -> int:
@@ -452,6 +473,7 @@ def show_balance(cfg: dict) -> int:
     print("\n  per label: real / synthetic in the balanced set")
     for label in BERT_LABELS:
         print(f"  {label:22s} {by_source.get((label, False), 0):6d} / {by_source.get((label, True), 0)}")
+    print(f"\n  loss weights: {class_weights_for(train, cfg)}  KEEP: {cc.get('keep_weight', 1.5)}")
     print(f"\nsettings: {cc}")
     return 0
 
@@ -509,6 +531,7 @@ def continue_saved_model(cfg: dict, device, epochs: int, force: bool = False) ->
         train, cfg, device, epochs=epochs, base_model=bc["base_model"], tag="continue",
         resume_dir=model_dir, learning_rate=float(cc.get("learning_rate", 1e-5)),
         keep_weight=float(cc.get("keep_weight", 1.5)),
+        class_weights=class_weights_for(train, cfg),
     )
     new, new_failed = judge(model, tok, "new model")
 
