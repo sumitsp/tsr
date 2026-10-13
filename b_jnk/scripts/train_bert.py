@@ -535,11 +535,18 @@ def continue_saved_model(cfg: dict, device, epochs: int, force: bool = False) ->
     )
     new, new_failed = judge(model, tok, "new model")
 
+    # A clinical page junked loses evidence; a junk page kept only costs review time.
+    keep_cost = float(cc.get("keep_lost_cost", 3.0))
+
+    def cost(r: dict) -> float:
+        return keep_cost * r.get("keep_pages_lost", 0) + r.get("junk_or_blank_missed", 0)
+
     better = (
         not new_failed
         and new.get("keep_pages_lost", 0) <= old.get("keep_pages_lost", 0)
-        and new.get("junk_or_blank_caught", 0) >= old.get("junk_or_blank_caught", 0)
+        and cost(new) < cost(old)
     )
+    print(f"\nmistake cost (KEEP lost x {keep_cost:g} + junk missed): old {cost(old):g}, new {cost(new):g}")
     meta = json.loads((model_dir / "bjnk_meta.json").read_text(encoding="utf-8"))
     meta.update({
         "trained_at": time.strftime("%Y-%m-%d %H:%M:%S"),

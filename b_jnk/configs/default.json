@@ -54,6 +54,7 @@
       "keep_share": null,
       "max_class_weight": 1.0,
       "holdout_share": 0.2,
+      "keep_lost_cost": 3.0,
       "epochs": 2,
       "learning_rate": 1e-5,
       "keep_weight": 3.0

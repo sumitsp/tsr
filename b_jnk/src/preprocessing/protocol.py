@@ -194,6 +194,12 @@ CLINICAL_VALUE_RE = re.compile(
     re.I,
 )
 CLINICAL_VALUES_MIN = 3
+# One lab result with its reference range is enough: "30.70 (>=20.00)", "18  4 - 76 ng/L".
+LAB_RESULT_RE = re.compile(
+    r"\d+(?:\.\d+)?\s*[HL]?\s*\(\s*[<>]=?\s*\d+(?:\.\d+)?\s*\)"
+    r"|\b\d+(?:\.\d+)?\s*[HL]?\s+\d+(?:\.\d+)?\s*-\s*\d+(?:\.\d+)?\s+(?:[a-z]+/[a-z]+|%|mg/dl|g/dl)",
+    re.I,
+)
 
 DEMOGRAPHIC_PATTERNS: tuple[str, ...] = (
     r"patient\s*demographics?",
@@ -310,6 +316,8 @@ def always_keep_tag(text: str) -> str | None:
         and CREDENTIAL_RE.search(text)
     ):
         return "KEEP_SIGNATURE_PAGE"
+    if LAB_RESULT_RE.search(text):
+        return "KEEP_LAB_RESULT"
     values = {" ".join(m.group(0).lower().split())[:25] for m in CLINICAL_VALUE_RE.finditer(text)}
     if len(values) >= CLINICAL_VALUES_MIN:
         return "KEEP_CLINICAL_VALUES"
