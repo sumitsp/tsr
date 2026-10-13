@@ -392,6 +392,8 @@ def balance(real: list[Example], synth: list[Example], cfg: dict, seed: int) -> 
     target = int(cc.get("class_target", 400))
     max_copies = int(cc.get("max_copies", 4))
     keep_share = float(cc.get("keep_share", 0.4))
+    if not cc.get("use_synthetic", True):
+        synth = []
     rng = random.Random(seed)
     by_real: dict[str, list[Example]] = collections.defaultdict(list)
     by_synth: dict[str, list[Example]] = collections.defaultdict(list)
@@ -423,6 +425,35 @@ def balance(real: list[Example], synth: list[Example], cfg: dict, seed: int) -> 
     out += keep[:keep_cap]
     rng.shuffle(out)
     return out
+
+
+def show_balance(cfg: dict) -> int:
+    """Class counts of the tagged pages, and of the training set balance() would build. Trains nothing."""
+    bc = cfg["bert"]
+    cc = bc.get("continue", {})
+    synth = synthetic_examples(cfg) if cc.get("use_synthetic", True) else []
+    real = real_examples(cfg)
+    tagged, dupes, conflicts = new_annotated(annotated_examples(cfg), synth + real)
+    train_tagged, held = split_by_chart(tagged, float(cc.get("holdout_share", 0.2)), bc["seed"])
+    train = balance(train_tagged + real, synth, cfg, bc["seed"])
+
+    def table(title: str, pages: list[Example]) -> None:
+        counts = collections.Counter(e.label for e in pages)
+        print(f"\n{title}: {len(pages)} pages")
+        for label in BERT_LABELS:
+            n = counts.get(label, 0)
+            print(f"  {label:22s} {n:6d}  {100 * n / max(1, len(pages)):5.1f}%")
+
+    table("your tagged pages", tagged)
+    table("held out for the check (not trained on)", held)
+    table("tagged + real pages that train", train_tagged + real)
+    table("balanced training set", train)
+    by_source = collections.Counter((e.label, e.source == "synthetic") for e in train)
+    print("\n  per label: real / synthetic in the balanced set")
+    for label in BERT_LABELS:
+        print(f"  {label:22s} {by_source.get((label, False), 0):6d} / {by_source.get((label, True), 0)}")
+    print(f"\nsettings: {cc}")
+    return 0
 
 
 def continue_saved_model(cfg: dict, device, epochs: int, force: bool = False) -> int:
@@ -524,6 +555,8 @@ def main() -> int:
     mode.add_argument("--eval-only", action="store_true")
     mode.add_argument("--continue-model", action="store_true",
                       help="Train models/bert_page further on balanced tagged + synthetic pages; keep it only if better")
+    ap.add_argument("--show-balance", action="store_true",
+                    help="print class counts before and after balancing, then stop (no training)")
     ap.add_argument("--force", action="store_true", help="with --continue-model: save the new model even if not better")
     args = ap.parse_args()
 
@@ -534,6 +567,8 @@ def main() -> int:
     device = pick_device(args.device)
     print(f"device={device} base_model={base_model} epochs={epochs}", flush=True)
 
+    if args.show_balance:
+        return show_balance(cfg)
     if args.continue_model:
         return continue_saved_model(cfg, device, epochs, force=args.force)
 

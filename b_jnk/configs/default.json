@@ -48,6 +48,7 @@
     "decide_short_pages": true,
     "seed": 42,
     "continue": {
+      "use_synthetic": true,
       "class_target": 400,
       "max_copies": 4,
       "keep_share": 0.4,
