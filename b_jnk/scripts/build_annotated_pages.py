@@ -38,6 +38,7 @@ from src.preprocessing.tesseract_txt import split_pages  # noqa: E402
 # ============================== RUN CONFIG ==============================
 LABELS_CSV = Path(r"C:\Users\sumit.pandey\Desktop\Imaging\blank_junk_labels.csv")
 # Main Tesseract output folder: each chart is OCR_DIR/<folder>/ocr/<folder>_prelim.txt
+# Several batches: a list, e.g. [Path(r"C:\...\batch1"), Path(r"C:\...\batch2")]
 OCR_DIR = Path(r"C:\Users\sumit.pandey\Desktop\Imaging\extracted_text_tesseract")
 # End of the txt name after the folder name ("" for <folder>.txt).
 TXT_SUFFIX = "_prelim"
@@ -113,12 +114,19 @@ def text_for(folder: str, image_name: str, by_page: dict[tuple[str, str], str]) 
     return found if found is not None else by_page.get((folder_key, Path(name).stem))
 
 
-def build(labels_csv: Path, ocr_dir: Path, out_path: Path) -> dict[str, int]:
+def build(labels_csv: Path, ocr_dir: Path | list[Path], out_path: Path) -> dict[str, int]:
     if not labels_csv.is_file():
         raise FileNotFoundError(f"LABELS_CSV does not exist: {labels_csv}")
-    if not ocr_dir.is_dir():
-        raise FileNotFoundError(f"OCR_DIR does not exist: {ocr_dir}")
-    by_page, chart_count = index_ocr(ocr_dir)
+    dirs = [Path(d) for d in (ocr_dir if isinstance(ocr_dir, (list, tuple)) else [ocr_dir])]
+    by_page: dict[tuple[str, str], str] = {}
+    chart_count = 0
+    for d in dirs:
+        if not d.is_dir():
+            raise FileNotFoundError(f"OCR_DIR does not exist: {d}")
+        pages, n = index_ocr(d)
+        for key, text in pages.items():
+            by_page.setdefault(key, text)
+        chart_count += n
     ocr_folders = {folder for folder, _ in by_page}
     counts = {"written": 0, "unlabeled": 0, "bad_label": 0, "no_ocr": 0, "empty_text": 0, "charts": chart_count}
     missing_folders: dict[str, int] = {}
@@ -160,6 +168,13 @@ def build(labels_csv: Path, ocr_dir: Path, out_path: Path) -> dict[str, int]:
                 "group": folder,
                 "image": image,
             })
+    if out_path.is_file():
+        before = sum(1 for line in out_path.read_text(encoding="utf-8").splitlines() if line.strip())
+        if before and len(rows) < before // 2:
+            kept = out_path
+            out_path = out_path.with_name(out_path.stem + ".new.jsonl")
+            print(f"Only {len(rows)} pages now vs {before} in {kept.name}: that file is kept, "
+                  f"this run is written to {out_path.name}. Check OCR_DIR.")
     out_path.parent.mkdir(parents=True, exist_ok=True)
     with out_path.open("w", encoding="utf-8") as fh:
         for row in rows:
