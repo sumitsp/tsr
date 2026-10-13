@@ -84,7 +84,9 @@ def chart_files(ocr_dir: Path) -> dict[str, Path]:
     A txt without "===== page =====" markers is not a chart dump and is skipped.
     """
     found: dict[str, Path] = {}
-    for path in sorted(ocr_dir.rglob("*.txt")):
+    # <folder>_prelim.txt first, so it wins over any other txt in the same folder.
+    paths = sorted(ocr_dir.rglob("*.txt"), key=lambda p: (not p.stem.casefold().endswith(TXT_SUFFIX.casefold()), str(p)))
+    for path in paths:
         if not split_pages(path.read_text(encoding="utf-8", errors="replace")[:4000]):
             continue
         for name in chart_names(path):
