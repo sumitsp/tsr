@@ -80,6 +80,12 @@ FAX_FORM_RE = re.compile(
     re.I,
 )
 FAX_FORM_MIN_FIELDS = 4
+# Confidentiality footer and fax header. Lab reports and every faxed chart page
+# carry them, so on their own they never make a page junk; with a filled-in fax
+# form they do.
+FAX_STAMP = frozenset({
+    "facsimile", "this fax", "intended recipient", "this message is intended", "if you have received this",
+})
 # A fax form alone (no cover wording) is a cover only on a short page or one with no
 # clinical wording: a faxed note can open with the sender's form block.
 FAX_FORM_MAX_WORDS = 150
@@ -287,21 +293,23 @@ def shell_page_reason(text: str) -> tuple[str, str] | None:
 
     A cover sheet says cover page or cover sheet at any length. Accept and
     unaccept count only on a short page. A letter or fax says one of the
-    letter phrases. A page with clinical content is left alone: a faxed note
-    carries "this fax" and "intended recipient" in its header and footer, and
-    a consult letter opens with "Dear Dr.". A page that names itself a cover
+    letter phrases. A confidentiality footer ("intended recipient", "if you
+    have received this") counts only on a filled-in fax form. A page with
+    clinical or lab content is left alone: a consult letter opens with
+    "Dear Dr.". A page that names itself a cover
     (or fax cover), or is a filled-in fax cover form, is junk anyway. A fax
     form ("Fax To: / From: / Pages: / Re:") is a cover even with no cover
     wording, when the page is short or has no clinical wording.
     """
+    fields = {re.sub(r"[^a-z]", "", m.lower())[:4] for m in FAX_FORM_RE.findall(text or "")}
+    fax_form = len(fields) >= FAX_FORM_MIN_FIELDS and any(f.startswith("fax") for f in fields)
     chosen = {
-        subtype: hits
+        subtype: [phrase for phrase in hits if fax_form or phrase not in FAX_STAMP]
         for subtype, hits in _candidate_hits(text).items()
         if subtype in {"JUNK_COVER_PAGE", "JUNK_LETTER_FAX"}
     }
-    fields = {re.sub(r"[^a-z]", "", m.lower())[:4] for m in FAX_FORM_RE.findall(text or "")}
-    fax_form = len(fields) >= FAX_FORM_MIN_FIELDS and any(f.startswith("fax") for f in fields)
-    clinical = NOTE_CONTENT_RE.search(text or "")
+    chosen = {subtype: hits for subtype, hits in chosen.items() if hits}
+    clinical = has_clinical_content(text)
     if not chosen:
         if fax_form and (not clinical or word_count(text) <= FAX_FORM_MAX_WORDS):
             return "JUNK_LETTER_FAX", "fax form"

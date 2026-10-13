@@ -14,7 +14,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from src.preprocessing.page_subclass import PROXIMITY_NAME, junk_trigger_hits
+from src.preprocessing.page_subclass import FAX_STAMP, LAB_CONTENT_RE, PROXIMITY_NAME, junk_trigger_hits
 from src.preprocessing.protocol import ProtocolHit, analyze_protocol, must_retain
 from src.preprocessing.taxonomy import Flag, to_flag
 
@@ -130,8 +130,13 @@ def decide_from_proba(
         default=(0.0, None),
     )
     # "records" near "request" is not enough: a patient's signed authorization says
-    # "I authorize Dr. X to request medical records".
-    phrases = [p for p in junk_trigger_hits(ocr_text).get(override_label or "", []) if p != PROXIMITY_NAME]
+    # "I authorize Dr. X to request medical records". On a lab report, neither is
+    # the confidentiality footer every lab report carries.
+    lab_page = bool(LAB_CONTENT_RE.search(ocr_text or ""))
+    phrases = [
+        p for p in junk_trigger_hits(ocr_text).get(override_label or "", [])
+        if p != PROXIMITY_NAME and not (lab_page and p in FAX_STAMP)
+    ]
     trigger_ok = (
         not config.demographic_override_needs_trigger
         or override_label in config.demographic_override_no_trigger_labels
