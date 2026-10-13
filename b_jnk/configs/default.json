@@ -52,11 +52,11 @@
       "class_target": 400,
       "max_copies": 4,
       "keep_share": null,
-      "max_class_weight": 1.5,
+      "max_class_weight": 1.0,
       "holdout_share": 0.2,
       "epochs": 2,
       "learning_rate": 1e-5,
-      "keep_weight": 1.5
+      "keep_weight": 3.0
     }
   }
 }
