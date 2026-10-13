@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Flag OCR pages like infer.py and compare BLANK / JUNK with a ground truth CSV.
 
-Ground truth columns: Chart_Name, Original Sequence, Blank Page, Junk Page.
+Ground truth columns: Chart_Name, OriginalSequence, Blank Page, Junk Page (spaces,
+underscores and case in the names do not matter).
 Original Sequence is the page number, matched to the image name (3.png = page 3).
 Blank Page / Junk Page count as set for Yes, Y, True, 1 or X.
 
@@ -66,8 +67,10 @@ def _page_number(image_name: str) -> int | None:
 
 
 def _column(header: list[str], want: str) -> str:
+    # "Original Sequence", "OriginalSequence" and "original_sequence" are one column.
+    squash = lambda s: re.sub(r"[^a-z0-9]", "", s.casefold())  # noqa: E731
     for name in header:
-        if _key(name).replace("_", " ") == want:
+        if squash(name) == squash(want):
             return name
     raise SystemExit(f"{GROUND_TRUTH_CSV}: column '{want}' not found (columns: {', '.join(header)})")
 
