@@ -7,7 +7,8 @@ Original Sequence is the page number, matched to the image name (3.png = page 3)
 Blank Page / Junk Page count as set for Yes, Y, True, 1 or X.
 
 Only charts that are in the ground truth are flagged. Inside those charts a page
-the ground truth does not list counts as KEEP.
+the ground truth does not list counts as KEEP. For txt OCR, only
+<chart>/<chart>_prelim.txt is read (not other txt files in the folder).
 
 The CSV has one row per page that the model or the ground truth calls BLANK or
 JUNK (KEEP pages on both sides are left out):
@@ -51,6 +52,8 @@ OCR_FORMAT = "txt"
 GROUND_TRUTH_CSV = Path(r"C:\Users\sumit.pandey\Desktop\Imaging\ground_truth.csv")
 # Empty = ground_truth_comparison.csv next to GROUND_TRUTH_CSV.
 OUT_CSV: Path | None = None
+# How many ground-truth chart folders to run. None or 0 = all of them.
+MAX_FOLDERS: int | None = 100
 # ========================================================================
 
 YES = {"yes", "y", "true", "1", "x"}
@@ -106,16 +109,43 @@ def chart_of(page_id: str) -> str:
     return parts[0] if parts else ""
 
 
-def load_pages() -> list[dict]:
+def _prelim_txt(chart_dir: Path) -> Path | None:
+    name = f"{chart_dir.name}_prelim.txt"
+    direct = chart_dir / name
+    if direct.is_file():
+        return direct
+    hits = sorted(p for p in chart_dir.rglob(name) if p.is_file())
+    return hits[0] if hits else None
+
+
+def selected_charts(truth: dict[str, dict[int, str]]) -> list[str]:
+    folders = sorted(
+        p.name for p in OCR_DIR.iterdir() if p.is_dir() and _key(p.name) in truth
+    )
+    if MAX_FOLDERS:
+        folders = folders[:MAX_FOLDERS]
+    return folders
+
+
+def load_pages(folders: list[str]) -> list[dict]:
     if OCR_FORMAT == "json":
-        return infer_json.load_pages(OCR_DIR)
+        wanted = {_key(name) for name in folders}
+        return [p for p in infer_json.load_pages(OCR_DIR) if _key(chart_of(p["page_id"])) in wanted]
     if OCR_FORMAT != "txt":
         raise SystemExit(f'OCR_FORMAT must be "txt" or "json", got: {OCR_FORMAT!r}')
     pages: list[dict] = []
-    for fp in sorted(OCR_DIR.rglob("*.txt")):
+    missing: list[str] = []
+    for name in folders:
+        fp = _prelim_txt(OCR_DIR / name)
+        if fp is None:
+            missing.append(name)
+            continue
         rel = fp.relative_to(OCR_DIR)
         prefix = f"{rel.parent.as_posix()}/" if rel.parent != Path(".") else ""
         pages.extend(infer._pages_from_rapid_txt(fp.read_text(encoding="utf-8", errors="replace"), prefix=prefix))
+    if missing:
+        shown = ", ".join(missing[:10]) + (" ..." if len(missing) > 10 else "")
+        print(f"{len(missing)} folders have no <folder>_prelim.txt: {shown}", flush=True)
     return pages
 
 
@@ -148,13 +178,15 @@ def main() -> int:
         raise SystemExit(f"OCR folder not found: {OCR_DIR}")
     truth, names = load_ground_truth(GROUND_TRUTH_CSV)
     out = OUT_CSV or GROUND_TRUTH_CSV.with_name("ground_truth_comparison.csv")
-    print(f"Ground truth: {len(truth)} charts", flush=True)
+    folders = selected_charts(truth)
+    cap = f"first {MAX_FOLDERS}" if MAX_FOLDERS else "all"
+    print(f"Ground truth: {len(truth)} charts  running: {cap} ({len(folders)} folders)", flush=True)
 
-    print(f"Reading OCR: {OCR_DIR}", flush=True)
-    pages = [p for p in load_pages() if _key(chart_of(p["page_id"])) in truth]
+    print(f"Reading OCR: {OCR_DIR}  (*_prelim.txt only)", flush=True)
+    pages = load_pages(folders)
     charts_found = {_key(chart_of(p["page_id"])) for p in pages}
-    print(f"{len(pages)} pages in {len(charts_found)} ground-truth charts "
-          f"({len(truth) - len(charts_found)} ground-truth charts have no OCR)", flush=True)
+    print(f"{len(pages)} pages in {len(charts_found)} folders "
+          f"({len(folders) - len(charts_found)} selected folders have no OCR)", flush=True)
 
     service = build_service()
     rows: list[dict] = []
