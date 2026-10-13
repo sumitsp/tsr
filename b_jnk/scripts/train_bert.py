@@ -376,38 +376,140 @@ def free(model) -> None:
         torch.cuda.empty_cache()
 
 
-def continue_saved_model(cfg: dict, device, epochs: int) -> int:
-    """Train the already-saved model on the new annotated pages and save it again."""
+def split_by_chart(pages: list[Example], share: float, seed: int) -> tuple[list[Example], list[Example]]:
+    """Hold out about `share` of the charts (every page of a chart on one side)."""
+    groups = sorted({e.group for e in pages})
+    random.Random(seed).shuffle(groups)
+    held = set(groups[: max(1, round(len(groups) * share))]) if len(groups) > 1 else set()
+    return [e for e in pages if e.group not in held], [e for e in pages if e.group in held]
+
+
+def balance(real: list[Example], synth: list[Example], cfg: dict, seed: int) -> list[Example]:
+    """Every label gets about bert.continue.class_target pages: real pages first, then
+    synthetic pages of that label, then repeats of the real ones (at most max_copies).
+    KEEP is capped at keep_share of the result, keeping all real KEEP pages it can."""
+    cc = cfg["bert"].get("continue", {})
+    target = int(cc.get("class_target", 400))
+    max_copies = int(cc.get("max_copies", 4))
+    keep_share = float(cc.get("keep_share", 0.4))
+    rng = random.Random(seed)
+    by_real: dict[str, list[Example]] = collections.defaultdict(list)
+    by_synth: dict[str, list[Example]] = collections.defaultdict(list)
+    for e in real:
+        by_real[e.label].append(e)
+    for e in synth:
+        by_synth[e.label].append(e)
+    out: list[Example] = []
+    for label in BERT_LABELS:
+        if label == "KEEP":
+            continue
+        have = list(by_real[label])
+        if len(have) < target:
+            extra = list(by_synth[label])
+            rng.shuffle(extra)
+            have += extra[: target - len(have)]
+        if have and len(have) < target and by_real[label]:
+            repeats = min(max_copies - 1, (target - len(have)) // len(by_real[label]) + 1)
+            have += by_real[label] * repeats
+            have = have[: max(target, len(by_real[label]))]
+        out += have
+    keep_cap = int(len(out) * keep_share / (1 - keep_share))
+    keep = list(by_real["KEEP"])
+    rng.shuffle(keep)
+    if len(keep) < keep_cap:
+        extra = list(by_synth["KEEP"])
+        rng.shuffle(extra)
+        keep += extra[: keep_cap - len(keep)]
+    out += keep[:keep_cap]
+    rng.shuffle(out)
+    return out
+
+
+def continue_saved_model(cfg: dict, device, epochs: int, force: bool = False) -> int:
+    """Train the saved model further on balanced real + synthetic pages; replace it only if better.
+
+    20% of the tagged charts are held out. The old and the new model are both run on them
+    (with the word rules, as infer.py runs them) and on tests/pages. The new model replaces
+    models/bert_page only when it loses no more KEEP pages, catches at least as much junk,
+    and fails no test page. Otherwise it is saved as models/bert_page.candidate.
+    """
+    import torch  # noqa: F401
+    from transformers import AutoModelForSequenceClassification, AutoTokenizer
+
+    sys.path.insert(0, str(ROOT / "tests"))
+    from check_pages import check  # noqa: E402
+
     bc = cfg["bert"]
+    cc = bc.get("continue", {})
     model_dir = ROOT / bc["model_dir"]
     if not (model_dir / "bjnk_meta.json").is_file():
         raise SystemExit(f"No saved model at {model_dir}")
-    annotated = annotated_examples(cfg)
-    if not annotated:
-        raise SystemExit(f"No annotated pages in {ROOT / bc.get('annotated_jsonl', 'data/raw/annotated_pages.jsonl')}")
-    # A short, small step. The saved weights stay; these pages nudge them.
-    epochs = min(epochs, 2)
+    synth = synthetic_examples(cfg)
+    real = real_examples(cfg)
+    tagged, dupes, conflicts = new_annotated(annotated_examples(cfg), synth + real)
+    if not tagged:
+        raise SystemExit(f"No tagged pages in {ROOT / bc.get('annotated_jsonl', 'data/raw/annotated_pages.jsonl')}")
+    train_tagged, held = split_by_chart(tagged, float(cc.get("holdout_share", 0.2)), bc["seed"])
+    train = balance(train_tagged + real, synth, cfg, bc["seed"])
+    print(f"tagged pages: {len(tagged)} (skipped {dupes} already in training, {conflicts} conflicting); "
+          f"held out {len(held)} from {len({e.group for e in held})} charts", flush=True)
+    print(f"balanced training set: {len(train)} {dict(collections.Counter(e.label for e in train))}", flush=True)
+
+    def judge(model, tok, tag: str) -> tuple[dict, list[str]]:
+        summary, _ = evaluate(model, tok, device, held, cfg, tag) if held else ({}, [])
+        if summary:
+            print_summary(tag, summary)
+        clf = BertPageClassifier(model, tok, labels=list(BERT_LABELS), max_length=bc["max_length"],
+                                 head_share=bc["head_share"], device=device, meta={"base_model": bc["base_model"]})
+        svc = PageClassifierService(clf, model_version=tag, decision=DecisionConfig(**cfg["decision"]),
+                                    min_dictionary_words=cfg["routing"]["min_dictionary_words"],
+                                    route_short_pages=not bc.get("decide_short_pages", False))
+        failed = check(svc, verbose=False)
+        print(f"[{tag}] test pages failed: {len(failed)} {failed}", flush=True)
+        return summary, failed
+
+    old_tok = AutoTokenizer.from_pretrained(str(model_dir))
+    old_model = AutoModelForSequenceClassification.from_pretrained(str(model_dir)).to(device).eval()
+    old, old_failed = judge(old_model, old_tok, "current model")
+    free(old_model)
+
+    epochs = min(epochs, int(cc.get("epochs", 2)))
     model, tok = train_model(
-        annotated, cfg, device, epochs=epochs, base_model=bc["base_model"], tag="continue",
-        resume_dir=model_dir, learning_rate=1e-5, keep_weight=1.0,
+        train, cfg, device, epochs=epochs, base_model=bc["base_model"], tag="continue",
+        resume_dir=model_dir, learning_rate=float(cc.get("learning_rate", 1e-5)),
+        keep_weight=float(cc.get("keep_weight", 1.5)),
     )
-    out_dir = model_dir
-    tmp_dir = out_dir.with_name(out_dir.name + ".tmp")
-    if tmp_dir.exists():
-        shutil.rmtree(tmp_dir)
+    new, new_failed = judge(model, tok, "new model")
+
+    better = (
+        not new_failed
+        and new.get("keep_pages_lost", 0) <= old.get("keep_pages_lost", 0)
+        and new.get("junk_or_blank_caught", 0) >= old.get("junk_or_blank_caught", 0)
+    )
     meta = json.loads((model_dir / "bjnk_meta.json").read_text(encoding="utf-8"))
     meta.update({
         "trained_at": time.strftime("%Y-%m-%d %H:%M:%S"),
         "continued_from": str(model_dir),
         "continue_epochs": epochs,
-        "continue_pages": len(annotated),
-        "continue_labels": dict(collections.Counter(e.label for e in annotated)),
+        "continue_train_labels": dict(collections.Counter(e.label for e in train)),
+        "continue_heldout": {k: (old.get(k), new.get(k)) for k in ("pages", "keep_pages_lost", "junk_or_blank_caught")},
     })
+    out_dir = model_dir if (better or force) else model_dir.with_name(model_dir.name + ".candidate")
+    tmp_dir = out_dir.with_name(out_dir.name + ".tmp")
+    if tmp_dir.exists():
+        shutil.rmtree(tmp_dir)
     save_bert(model, tok, tmp_dir, meta)
     if out_dir.exists():
         shutil.rmtree(out_dir)
     tmp_dir.rename(out_dir)
-    print(f"\nSaved continued model -> {out_dir}", flush=True)
+    print("\nheld-out charts, old -> new: "
+          f"KEEP lost {old.get('keep_pages_lost')} -> {new.get('keep_pages_lost')}, "
+          f"junk/blank caught {old.get('junk_or_blank_caught')} -> {new.get('junk_or_blank_caught')} "
+          f"of {new.get('junk_or_blank_pages')}; test pages failed {len(old_failed)} -> {len(new_failed)}")
+    if out_dir == model_dir:
+        print(f"Saved -> {out_dir}" + ("" if better else "  (--force: saved although not better)"))
+    else:
+        print(f"Not better: the current model stays. New model saved for a look -> {out_dir}")
     return 0
 
 
@@ -421,7 +523,8 @@ def main() -> int:
     mode.add_argument("--skip-eval", action="store_true")
     mode.add_argument("--eval-only", action="store_true")
     mode.add_argument("--continue-model", action="store_true",
-                      help="Keep models/bert_page and train it further on the annotated pages")
+                      help="Train models/bert_page further on balanced tagged + synthetic pages; keep it only if better")
+    ap.add_argument("--force", action="store_true", help="with --continue-model: save the new model even if not better")
     args = ap.parse_args()
 
     cfg = _load_cfg(Path(args.config))
@@ -432,7 +535,7 @@ def main() -> int:
     print(f"device={device} base_model={base_model} epochs={epochs}", flush=True)
 
     if args.continue_model:
-        return continue_saved_model(cfg, device, epochs)
+        return continue_saved_model(cfg, device, epochs, force=args.force)
 
     synth = synthetic_examples(cfg)
     real = real_examples(cfg)

@@ -46,6 +46,15 @@
     "keep_weight": 3.0,
     "real_copies": 3,
     "decide_short_pages": true,
-    "seed": 42
+    "seed": 42,
+    "continue": {
+      "class_target": 400,
+      "max_copies": 4,
+      "keep_share": 0.4,
+      "holdout_share": 0.2,
+      "epochs": 2,
+      "learning_rate": 1e-5,
+      "keep_weight": 1.5
+    }
   }
 }
