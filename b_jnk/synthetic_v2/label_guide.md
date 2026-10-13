@@ -10,9 +10,12 @@ KEEP: part of the patient's chart, or anything a coder or member-verification te
 - Clinical notes and reports of every kind: office visit / progress notes, H&P, consults, discharge summaries, ED notes, operative and procedure notes, telephone encounters, nursing notes, therapy notes, care plans, after-visit summaries.
 - Results: labs, pathology, radiology, ECG / echo / stress tests, endoscopy and colonoscopy reports, eye exams.
 - Medication lists, reconciliations, prescriptions, refill histories, MARs; allergy lists, problem lists, immunization records.
-- Letters between clinicians ABOUT this patient's care: referral letters, consult letters ("Dear Dr. ..., thank you for referring ..."), results letters to the patient.
+- Letters between clinicians ABOUT this patient's care: referral letters, consult letters ("Dear Dr. ..., thank you for referring ..."), results letters to the patient, and short cover notes like "Thank you for your referral of ... Please see the attached visit note", even when the footer says "Fax cover page".
 - Demographics, face sheets, registration forms, patient information sheets, even with an insurance section.
-- Signature and attestation pages, short continuation pages (the last lines of a plan), chart tables of contents, EMR index pages, section dividers that name a clinical section.
+- Insurance coverage pages printed from the EMR (payor, plan, subscriber, member ID, effective dates). Only a standalone photocopy of a physical insurance or ID card is junk.
+- Forms the patient read, signed, or was given: Notice of Privacy Practices and its acknowledgement of receipt (HIPAA), patient rights, financial responsibility / financial policy agreements, surprise-billing (No Surprises Act) notices, consent to treat, communication authorizations, e-signed billing notices, advance beneficiary notices. These stay KEEP even when they talk about billing, payment, balances, fees, or collections, and every continuation page of them is KEEP too.
+- After-visit summaries, including pages that only list upcoming appointments and say to bring insurance cards or pay a balance due at the visit.
+- Signature and attestation pages (including a page with only "Service Provider: / Rendering Provider:", a signature and a provider name), short continuation pages (the last lines of a plan), chart tables of contents, EMR index pages, section dividers that name a clinical section.
 - Any of the above faxed: a fax header line ("From: ... To: ... P.3/12"), a practice letterhead, or a confidentiality footer does not make it junk.
 
 JUNK_INVOICE: billing and payment. Invoices, superbills, patient statements, statements of account, remittance advice / EOBs, payment receipts, itemized charges, collection notices. Also standalone copies of insurance cards, driver's licenses, or ID cards with no clinical content.

@@ -1,0 +1,81 @@
+label,page_kind,count,twist
+KEEP,office visit / progress note,120,
+KEEP,office visit / progress note faxed,120,has a fax header line at the top and a fax confidentiality footer mentioning the intended recipient
+KEEP,history and physical,60,
+KEEP,discharge summary,60,
+KEEP,ED note,50,
+KEEP,consult note,60,
+KEEP,referral or consult letter between clinicians,120,"a letter that opens with Dear Dr. and discusses this patient's findings, assessment and plan; may say please find attached"
+KEEP,results letter to the patient,40,
+KEEP,operative or procedure note,50,
+KEEP,endoscopy or colonoscopy report,80,"from a GI or endoscopy center whose name contains Endoscopy or Colonoscopy, with findings, impression and recommendations"
+KEEP,telephone encounter,40,
+KEEP,nursing note or flowsheet,40,
+KEEP,PT / OT / behavioral health note,50,
+KEEP,care plan or after-visit summary,50,
+KEEP,lab results,80,
+KEEP,pathology report,40,
+KEEP,radiology report,60,
+KEEP,ECG / echo / stress test report,40,
+KEEP,eye exam or retinal imaging report,40,
+KEEP,medication list or reconciliation,80,
+KEEP,prescription or refill history,40,
+KEEP,MAR,30,
+KEEP,allergy / problem / immunization list,60,
+KEEP,face sheet or demographics page,80,includes insurance and guarantor sections
+KEEP,registration or patient information form,60,
+KEEP,signature or attestation page,60,short page
+KEEP,short clinical continuation page,80,"short page: the last few lines of a plan or note, then page x of y"
+KEEP,chart table of contents or EMR index,40,lists clinical sections with page numbers
+KEEP,clinical section divider page,40,"short page naming a clinical section, for example Radiology Reports"
+KEEP,progress note that mentions records or requests,60,"genuine visit note whose history or plan mentions records requested from another provider, or please send copy to PCP"
+KEEP,clinical page printed with an EMR footer,60,"footer has print date, user, page x of y, and a long confidentiality notice"
+KEEP,clinical page with fax transmission header,60,"top line like From: (555) 201-3344  To: (555) 201-9900  P.004/017  11/14/2025 09:12"
+JUNK_LETTER_FAX,fax cover sheet,180,"form with Date, Fax To, From, Phone, Fax, Pages, Subject or Re, Message, and a confidentiality paragraph"
+JUNK_LETTER_FAX,fax cover sheet from a medical practice,120,"letterhead of a clinic or endoscopy center with a list of physician names; Subject names the patient's medical records; long legal notice"
+JUNK_LETTER_FAX,fax cover sheet with no fax wording,60,"a transmittal form with To, From, Date, Pages, Re fields but never uses the words fax or facsimile"
+JUNK_LETTER_FAX,fax transmission or delivery report,80,
+JUNK_LETTER_FAX,generic cover letter,100,"one or two sentences saying documents are enclosed, no clinical content"
+JUNK_LETTER_FAX,standalone confidentiality notice page,50,
+JUNK_LETTER_FAX,administrative letter not about care,80,"for example office closure, address change, provider leaving the practice, credentialing"
+JUNK_RECORD_REQUEST,retrieval vendor request letter,140,"from a vendor like a records retrieval company on behalf of a health plan, listing patient, DOB, dates of service and a chase id"
+JUNK_RECORD_REQUEST,HEDIS or risk adjustment chart request,120,
+JUNK_RECORD_REQUEST,pull list or chase list,100,"a table of several patients with member id, DOB, dates of service, chase id"
+JUNK_RECORD_REQUEST,records transmittal or fulfillment letter,100,
+JUNK_RECORD_REQUEST,release of information request form,80,
+JUNK_RECORD_REQUEST,request acknowledgement or status form,60,
+JUNK_RECORD_REQUEST,payer letter to provider office,50,
+JUNK_INSTRUCTIONS,HEDIS measure what-to-send table,130,"table of measures with acronym, measure name, and documents to submit"
+JUNK_INSTRUCTIONS,upload or portal submission instructions,110,
+JUNK_INSTRUCTIONS,document checklist,90,
+JUNK_INSTRUCTIONS,record copy and labeling guidelines,70,
+JUNK_INSTRUCTIONS,instructions page without the word instructions,50,"tells the office what to send and how, phrased as steps, never using the word instructions"
+JUNK_INVOICE,invoice for record copies,90,from a copy service or release-of-information vendor
+JUNK_INVOICE,patient statement or statement of account,90,
+JUNK_INVOICE,superbill or itemized charges,70,
+JUNK_INVOICE,remittance advice or EOB,70,
+JUNK_INVOICE,payment receipt or collection notice,50,
+JUNK_INVOICE,insurance card or ID card copy,80,"front and back text of the card only, with member id, group, plan, phone numbers"
+JUNK_COVER_PAGE,chart or packet cover sheet,120,"title like Medical Records Cover Sheet with patient name, DOB, provider, date range, packet or request id"
+JUNK_COVER_PAGE,cover page titled Cover Page,80,any length; can include a confidentiality paragraph
+JUNK_COVER_PAGE,HCC or coding review stamp sheet,120,"short page: ACCEPTED or UNACCEPTED, an HCC or ICD-10 code, reviewer initials, date"
+JUNK_COVER_PAGE,batch or packet title sheet,80,"short page with a batch id, packet id, barcode number, and site name"
+JUNK_OTHERS,barcode or patch separator sheet,70,short page
+JUNK_OTHERS,scanner calibration or printer test page,50,
+JUNK_OTHERS,shipping label or postal receipt,70,
+JUNK_OTHERS,portal upload receipt,60,
+JUNK_OTHERS,end of record closer page,60,"short page like a patient name, END OF PATIENT RECORD, page number"
+JUNK_OTHERS,non-clinical photo caption or scan remnant,50,short page
+JUNK_OTHERS,short admin crumb,90,"short page: a lone job id, user name, print queue, or batch number"
+KEEP,notice of privacy practices (HIPAA),90,"practice letterhead, patient name, DOB, account number; uses and disclosures, your rights, accounting of disclosures; some pages are continuations with no header"
+KEEP,acknowledgement of receipt of privacy practices,60,"signed by the patient or representative, Reviewed with and Relationship to Patient fields, electronically signed line"
+KEEP,patient rights and responsibilities notice,60,
+KEEP,patient financial responsibility form,90,"talks about insurance, balances, statements, finance charges, collection agency, returned check fees, missed appointment fees; signed by the patient"
+KEEP,surprise billing / No Surprises Act notice,60,"says balance billing, out-of-network, copayment, deductible; patient name and account at the top"
+KEEP,consent or communication authorization form,60,"consent to treat, or who may receive test results, appointment and billing information; checkboxes and patient signature"
+KEEP,e-signed billing or financial notice in an EMR printout,50,"EMR header with patient, MRN, DOB, visit date; says the patient will receive separate bills; signature captured with a signature pad"
+KEEP,insurance coverage page from the EMR,60,"payor, plan, insurance group, subscriber name, subscriber birth date, member ID, effective dates, printed by line"
+KEEP,after visit summary appointments page,50,"upcoming appointment with arrival time, bring insurance cards and photo ID, be prepared to pay co-pay and any balance due"
+KEEP,provider signature page,60,"short page: Service Provider:, Rendering Provider:, a provider name with MD, DO or OD, maybe one line of a procedure code"
+KEEP,short referral thank-you note,60,"Thank you for your referral of the patient whom I saw on a date. Please see the attached visit note. Footer may say Fax cover page"
+KEEP,faxed specialist exam note with facsimile notice,60,"letterhead with a long facsimile confidentiality notice, then a full exam: reason for visit, HPI, meds with doses, allergies, exam findings"

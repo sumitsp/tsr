@@ -130,6 +130,61 @@ CLINICAL_IMAGE_SHORT_PAGE_PATTERNS: tuple[str, ...] = (
 )
 CLINICAL_IMAGE_SHORT_PAGE_MAX_WORDS = 60
 
+# Other pages that are part of the patient's chart and are never junk, whatever the
+# model or a word rule says. Each kind keeps its own audit tag.
+ALWAYS_KEEP_PATTERNS: dict[str, tuple[str, ...]] = {
+    # Forms the patient read or signed: HIPAA notice and acknowledgement, rights,
+    # financial policy, consent, communication authorization, e-signed notices.
+    "KEEP_PATIENT_FORM": (
+        r"notice\s+of\s+privacy\s+practices",
+        r"acknowledg\w*\s+of\s+receipt\s+of\s+(?:the\s+)?(?:notice|health\s+information\s+privacy)",
+        r"(?:notice\s+of\s+)?patient(?:'s)?\s+rights",
+        r"your\s+rights\s+regarding\s+your\s+(?:phi|health\s+information)",
+        r"accounting\s+of\s+disclosures",
+        r"right\s+to\s+(?:a\s+paper\s+copy|file\s+a\s+complaint)",
+        r"financial\s+(?:responsibility|agreement|policy)",
+        r"surprise\s+(?:medical\s+)?bill",
+        r"protect\w*\s+(?:you\s+)?(?:from|against)\s+balance\s+billing",
+        r"consent\s+(?:to|for)\s+(?:treat|treatment|care|procedure)",
+        r"informed\s+consent\s+form",
+        r"communication\s+authorization",
+        r"advance\s+beneficiary\s+notice",
+        r"relationship\s+to\s+patient\s*:",
+        r"signature\s+captured\s+with",
+    ),
+    # A clinician's letter about this patient's visit.
+    "KEEP_CLINICAL_LETTER": (
+        r"thank\s+you\s+for\s+(?:your\s+)?referr",
+        r"thank\s+you\s+for\s+allowing\s+(?:me|us)\s+to\s+participate",
+        r"(?:attached|enclosed)\s+(?:visit|office|clinic|consult(?:ation)?)\s+note",
+        r"pleasure\s+of\s+seeing",
+    ),
+    "KEEP_AFTER_VISIT_SUMMARY": (
+        r"after\s+visit\s+summary",
+    ),
+}
+# A provider signature page is short: the signature block and little else.
+# (A superbill also says "rendering provider", but it is a full page of charges.)
+SIGNATURE_PAGE_RE = re.compile(
+    r"rendering\s+provider|service\s+provider\s*:|electronically\s+signed\s+(?:by|on)|provider\s+signature",
+    re.I,
+)
+CREDENTIAL_RE = re.compile(r"\b(?:MD|M\.D\.|DO|OD|NP|PA-C|PA|DPM|DNP|APRN|FNP|PhD|RN)\b")
+SIGNATURE_PAGE_MAX_WORDS = 60
+# Filled-in clinical values: doses, vitals, sig lines, and section fields with content.
+# A HEDIS "what to send" list names sections but never fills them in.
+CLINICAL_VALUE_RE = re.compile(
+    r"\b\d+(?:\.\d+)?\s?(?:mg|mcg|ml|units?|unt|meq|mmol/l|mg/dl|g/dl|%)\b(?!\s*fee)"
+    r"|\b(?:bp|blood\s+pressure)\s*:?\s*\d{2,3}/\d{2,3}"
+    r"|\b(?:temp|pulse|heart\s+rate|resp|spo2|o2\s+sat|weight|height|bmi|a1c|hba1c)\s*:?\s*\d"
+    r"|\b(?:hpi|cc|chief\s+complaint|reason\s+for\s+visit|assessment|impression|plan|imp/plan|allergies"
+    r"|diagnosis|dx|findings|ros|exam)\s*:\s*[a-z]{3,}"
+    r"|\b(?:tablet|capsule|injection)s?\b.{0,20}\b(?:daily|qday|bid|tid|qid|qhs|prn|by\s+mouth)\b"
+    r"|\b(?:od|os|ou)\b\s*:?\s*(?:\d|20/)",
+    re.I,
+)
+CLINICAL_VALUES_MIN = 3
+
 DEMOGRAPHIC_PATTERNS: tuple[str, ...] = (
     r"patient\s*demographics?",
     r"\bdemographics?\b",
@@ -158,11 +213,14 @@ _JUNK = {k: _compile(v) for k, v in JUNK_PATTERNS.items()}
 _CLINICAL_IMAGE = _compile(CLINICAL_IMAGE_PATTERNS)
 _CLINICAL_IMAGE_SHORT_PAGE = _compile(CLINICAL_IMAGE_SHORT_PAGE_PATTERNS)
 _DEMOGRAPHIC = _compile(DEMOGRAPHIC_PATTERNS)
+_ALWAYS_KEEP = {k: _compile(v) for k, v in ALWAYS_KEEP_PATTERNS.items()}
 
 
 @dataclass
 class ProtocolHit:
     audit_tag: str | None
+    # True for every never-junk page (clinical image, patient form, clinical letter,
+    # signature page, dense clinical values); audit_tag says which.
     retain_clinical_image: bool
     retain_demographic: bool
     evidence: list[str]
@@ -197,6 +255,12 @@ def analyze_protocol(ocr_text: str) -> ProtocolHit:
     if clinical:
         evidence.append("retain:clinical_image")
         audit = "KEEP_CLINICAL_IMAGE"
+    else:
+        keep_tag = always_keep_tag(text)
+        if keep_tag:
+            clinical = True
+            evidence.append(f"retain:{keep_tag.lower()}")
+            audit = keep_tag
     if demo:
         evidence.append("retain:demographic")
         if audit is None:
@@ -223,6 +287,23 @@ def analyze_protocol(ocr_text: str) -> ProtocolHit:
         retain_demographic=demo,
         evidence=evidence,
     )
+
+
+def always_keep_tag(text: str) -> str | None:
+    """The never-junk kind of a page that is not a clinical image, or None."""
+    for tag, patterns in _ALWAYS_KEEP.items():
+        if any(p.search(text) for p in patterns):
+            return tag
+    if (
+        len(text.split()) <= SIGNATURE_PAGE_MAX_WORDS
+        and SIGNATURE_PAGE_RE.search(text)
+        and CREDENTIAL_RE.search(text)
+    ):
+        return "KEEP_SIGNATURE_PAGE"
+    values = {" ".join(m.group(0).lower().split())[:25] for m in CLINICAL_VALUE_RE.finditer(text)}
+    if len(values) >= CLINICAL_VALUES_MIN:
+        return "KEEP_CLINICAL_VALUES"
+    return None
 
 
 def must_retain(hit: ProtocolHit) -> bool:

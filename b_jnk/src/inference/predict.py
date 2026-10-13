@@ -103,7 +103,7 @@ class PageClassifierService:
             # Retention safeguards still win over blank routing
             if hit.retain_clinical_image:
                 flag = "KEEP"
-                audit = "KEEP_CLINICAL_IMAGE"
+                audit = hit.audit_tag or "KEEP_CLINICAL_IMAGE"
                 review = False
             elif hit.retain_demographic:
                 flag = "KEEP"

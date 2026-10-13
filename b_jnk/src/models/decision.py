@@ -202,7 +202,7 @@ def decide_from_proba(
     # If we forced KEEP via retention, stamp the retention audit tag
     if reason.startswith("protocol_retain"):
         audit = (
-            "KEEP_CLINICAL_IMAGE"
+            (hit.audit_tag or "KEEP_CLINICAL_IMAGE")
             if hit.retain_clinical_image
             else "KEEP_DEMOGRAPHIC"
         )
