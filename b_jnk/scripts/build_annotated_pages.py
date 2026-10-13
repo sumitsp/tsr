@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Join image labels to Tesseract page text for BERT and TF-IDF training.
+"""Join image labels to Tesseract page text for BERT training.
 
 The label CSV is the one b_jnk_creator writes (folder name, image name, value,
 subtype). OCR_DIR is the main Tesseract output folder, with one text file per
@@ -15,7 +15,7 @@ page; if the extension differs (labels on .png, OCR on .jpg) the name without
 extension is matched.
 
 Writes data/raw/annotated_pages.jsonl. That file is added on top of the
-existing training pages by scripts/train_bert.py and scripts/train_baseline.py.
+existing training pages by scripts/train_bert.py.
 Empty label rows are skipped.
 
 Edit RUN CONFIG, then:

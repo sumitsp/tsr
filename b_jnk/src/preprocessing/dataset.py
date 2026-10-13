@@ -208,3 +208,21 @@ def load_annotated_pages(path: Path | str, already: Iterable[PageRecord] = ()) -
             raw=obj,
         ))
     return out
+
+
+def synthetic_paths(root: Path, cfg: dict) -> list[Path]:
+    """bert.synthetic_clean: one path or a list, relative to root. Missing files are
+    skipped; with none found, the original synthetic set is used."""
+    value = cfg["bert"]["synthetic_clean"]
+    paths = [Path(root) / p for p in ([value] if isinstance(value, str) else value)]
+    for p in paths:
+        if not p.is_file():
+            print(f"synthetic file not on this machine: {p}", flush=True)
+    found = [p for p in paths if p.is_file()]
+    if not found:
+        legacy = Path(root) / "synthetic" / "checked" / "clean.jsonl"
+        if not legacy.is_file():
+            raise SystemExit("No synthetic pages found")
+        print(f"using {legacy}", flush=True)
+        found = [legacy]
+    return found

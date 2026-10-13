@@ -25,7 +25,6 @@ import json
 import re
 import sys
 from collections import Counter
-from dataclasses import replace
 from pathlib import Path
 
 
@@ -54,14 +53,10 @@ START_FROM = ""
 # Excel for blob runs is written here as page_flags.xlsx
 OUTPUT_DIR = Path(r"C:\Users\sumit.pandey\Desktop\Imaging\page_flags")
 
-MODEL_PATH = ROOT / "models" / "tfidf_flat.joblib"
-# Used instead of MODEL_PATH when present and torch + transformers are installed
+# Pages are flagged by BERT plus the word rules. TF-IDF is not used: it counts
+# words, and a fax number or a name and DOB sit on chart pages and junk alike.
 BERT_DIR = ROOT / "models" / "bert_page"
 CONFIG_PATH = ROOT / "configs" / "default.json"
-# With BERT loaded, TF-IDF (MODEL_PATH) is a second opinion for junk: a page BERT
-# keeps but TF-IDF calls JUNK with p_junk >= this goes to JUNK with review.
-# None turns it off. scripts/train_baseline.py prints what each value costs.
-TFIDF_SAFETY_NET_MIN_P_JUNK: float | None = 0.80
 # ---------------------------------------------------------------------------
 
 IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".tif", ".tiff", ".bmp", ".webp", ".pdf"}
@@ -81,10 +76,7 @@ def _load_cfg(path: Path) -> dict:
 
 from src.inference.predict import InferenceResult, PageClassifierService  # noqa: E402
 from src.models.bert_classifier import bert_available  # noqa: E402
-from src.models.classifiers import FlatClassifier  # noqa: E402
 from src.models.decision import DecisionConfig  # noqa: E402
-from src.preprocessing.page_subclass import assign_junk_subtype  # noqa: E402
-from src.preprocessing.protocol import analyze_protocol  # noqa: E402
 from src.preprocessing.docling_page import extract_docling_page  # noqa: E402
 from src.preprocessing.tesseract_txt import PAGE_SPLIT_TXT, clean_ocr_text as _clean_ocr_text  # noqa: E402
 
@@ -473,28 +465,6 @@ def _open_excel_writer(path: Path):
     return wb, ws
 
 
-def _safety_net(r: InferenceResult, net: PageClassifierService, page: dict) -> InferenceResult:
-    """BERT kept the page; TF-IDF is sure it is junk. A clinical image is never moved."""
-    text = page.get("ocr_text", "")
-    second = net.predict_one(r.page_id, text, content_meta=page.get("content_meta"))
-    # p_junk alone decides: TF-IDF's own JUNK call needs 0.85, which would hide a lower cutoff.
-    if second.p_junk is None or second.p_junk < TFIDF_SAFETY_NET_MIN_P_JUNK:
-        return r
-    if analyze_protocol(text).retain_clinical_image:
-        return r
-    subtype = second.subclass if second.flag == "JUNK" and second.subclass else assign_junk_subtype(text).subclass
-    return replace(
-        r,
-        flag="JUNK",
-        review_required=True,
-        audit_tag=subtype,
-        subclass=subtype,
-        subclass_reason=second.subclass_reason if subtype == second.subclass else "tfidf_safety_net",
-        decision_reason=f"{r.decision_reason}+tfidf_safety_net:{second.p_junk:.3f}",
-        top_evidence=f"tfidf_p_junk:{second.p_junk:.3f}",
-    )
-
-
 def main() -> int:
     source = INPUT_SOURCE.strip().lower()
     if source not in {"local", "blob"}:
@@ -509,39 +479,17 @@ def main() -> int:
                 f"Edit LOCAL_INPUT at the top of scripts/infer.py"
             )
         out = _output_path_from_input(in_path)
-    model_path = Path(MODEL_PATH)
-    config_path = Path(CONFIG_PATH)
-
-    cfg = _load_cfg(config_path)
-    model = None
-    model_version = cfg["model_version"]
-    route_short_pages = True
-    if bert_available(BERT_DIR):
-        try:
-            from src.models.bert_classifier import BertPageClassifier
-
-            print(f"Loading BERT model: {BERT_DIR}", flush=True)
-            model = BertPageClassifier.load(BERT_DIR)
-            model_version += "+bert"
-            route_short_pages = not cfg.get("bert", {}).get("decide_short_pages", False)
-        except ImportError as exc:
-            print(f"BERT needs torch + transformers ({exc}); using TF-IDF", flush=True)
-    safety_net = None
-    if model is not None and TFIDF_SAFETY_NET_MIN_P_JUNK is not None and model_path.exists():
-        print(f"TF-IDF safety net: {model_path} (p_junk >= {TFIDF_SAFETY_NET_MIN_P_JUNK})", flush=True)
-        safety_net = PageClassifierService(
-            FlatClassifier.load(str(model_path)),
-            model_version=cfg["model_version"] + "+tfidf",
-            decision=DecisionConfig(**cfg["decision"]),
-            min_dictionary_words=cfg["routing"]["min_dictionary_words"],
-        )
-        model_version += "+tfidf_net"
-    if model is None:
-        if not model_path.exists():
-            raise SystemExit(f"Model not found: {model_path}")
-        print(f"Loading model: {model_path}", flush=True)
-        model = FlatClassifier.load(str(model_path))
-        model_version += "+tfidf"
+    cfg = _load_cfg(Path(CONFIG_PATH))
+    if not bert_available(BERT_DIR):
+        raise SystemExit(f"BERT model not found: {BERT_DIR} (needs bjnk_meta.json, config.json, model.safetensors)")
+    try:
+        from src.models.bert_classifier import BertPageClassifier
+    except ImportError as exc:
+        raise SystemExit(f"BERT needs torch + transformers: pip install -r requirements-bert.txt ({exc})") from exc
+    print(f"Loading BERT model: {BERT_DIR}", flush=True)
+    model = BertPageClassifier.load(BERT_DIR)
+    model_version = cfg["model_version"] + "+bert"
+    route_short_pages = not cfg.get("bert", {}).get("decide_short_pages", False)
     service = PageClassifierService(
         model,
         model_version=model_version,
@@ -572,8 +520,6 @@ def main() -> int:
             page.get("ocr_text", ""),
             content_meta=page.get("content_meta"),
         )
-        if safety_net is not None and r.flag == "KEEP":
-            r = _safety_net(r, safety_net, page)
         row = _row_from_result(r)
         rows.append(row)
         ws.append([row.get(c, "") for c in COLUMNS])

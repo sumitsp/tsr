@@ -22,7 +22,6 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import infer  # noqa: E402
 from src.inference.predict import PageClassifierService  # noqa: E402
 from src.models.bert_classifier import bert_available  # noqa: E402
-from src.models.classifiers import FlatClassifier  # noqa: E402
 from src.models.decision import DecisionConfig  # noqa: E402
 from src.preprocessing.page_subclass import (  # noqa: E402
     NOTE_CONTENT_RE,
@@ -84,30 +83,15 @@ def main() -> int:
     print(f"  invoice rule: {invoice_page_reason(text)}   cover/letter rule: {shell_page_reason(text)}"
           f"   end-of-record rule: {end_record_reason(text)}")
 
-    print("\nmodels (each one with the rules on top, as infer.py runs them):")
+    print("\nBERT with the rules on top, as infer.py runs it:")
     bert_dir = Path(infer.BERT_DIR)
-    first = None
-    if bert_available(bert_dir):
-        from src.models.bert_classifier import BertPageClassifier
-
-        route_short = not cfg.get("bert", {}).get("decide_short_pages", False)
-        first = service(BertPageClassifier.load(bert_dir), cfg, route_short).predict_one("page", text)
-        show(f"BERT ({bert_dir.name})", first)
-    else:
+    if not bert_available(bert_dir):
         print(f"  BERT: not found at {bert_dir}")
-    tfidf_path = Path(infer.MODEL_PATH)
-    if tfidf_path.exists():
-        net = service(FlatClassifier.load(str(tfidf_path)), cfg)
-        second = net.predict_one("page", text)
-        show("TF-IDF", second)
-        cut = infer.TFIDF_SAFETY_NET_MIN_P_JUNK
-        if first is not None and cut is not None:
-            final = infer._safety_net(first, net, {"ocr_text": text}) if first.flag == "KEEP" else first
-            print(f"\nfinal (BERT + rules + TF-IDF safety net at p_junk >= {cut}): {final.flag} {final.subclass or ''}")
-            if final.flag == "KEEP" and second.p_junk is not None:
-                print(f"  TF-IDF p_junk {second.p_junk} is below the cutoff {cut}")
-    else:
-        print(f"  TF-IDF: not found at {tfidf_path}")
+        return 1
+    from src.models.bert_classifier import BertPageClassifier
+
+    route_short = not cfg.get("bert", {}).get("decide_short_pages", False)
+    show(f"BERT ({bert_dir.name})", service(BertPageClassifier.load(bert_dir), cfg, route_short).predict_one("page", text))
     return 0
 
 

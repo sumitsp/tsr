@@ -40,7 +40,7 @@ from src.models.bert_classifier import (  # noqa: E402
     save_bert,
 )
 from src.models.decision import DecisionConfig  # noqa: E402
-from src.preprocessing.dataset import filter_training_rows, load_jsonl  # noqa: E402
+from src.preprocessing.dataset import filter_training_rows, load_jsonl, synthetic_paths  # noqa: E402
 from src.preprocessing.page_subclass import JUNK_SUBTYPES, assign_junk_subtype  # noqa: E402
 from src.preprocessing.taxonomy import to_flag  # noqa: E402
 
@@ -73,17 +73,15 @@ def flag_of(label: str) -> str:
 
 
 def synthetic_examples(cfg: dict) -> list[Example]:
-    path = ROOT / cfg["bert"]["synthetic_clean"]
-    if not path.exists():
-        raise SystemExit(f"{path} missing - run: python scripts/check_synthetic.py --write")
     out = []
-    for line in path.read_text(encoding="utf-8").splitlines():
-        if not line.strip():
-            continue
-        r = json.loads(line)
-        if not r["text"].strip():
-            continue  # absolute blanks are decided from Docling structure before the model
-        out.append(Example(r["id"], r["text"], r["label"], "synthetic", group="synthetic"))
+    for path in synthetic_paths(ROOT, cfg):
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            r = json.loads(line)
+            if not r["text"].strip():
+                continue  # absolute blanks are decided before the model
+            out.append(Example(r["id"], r["text"], r["label"], "synthetic", group="synthetic"))
     return out
 
 

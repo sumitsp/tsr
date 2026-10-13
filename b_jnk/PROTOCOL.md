@@ -5,7 +5,7 @@ Excel also writes **`audit_tag`** for QC chain of custody.
 
 ## Mandatory retention (hard rules)
 
-These **never** become BLANK/JUNK, even if the TF-IDF model scores junk:
+These **never** become BLANK/JUNK, even if the model scores junk:
 
 | Signal | Audit tag | Rule |
 |--------|-----------|------|
@@ -28,4 +28,3 @@ Empty OCR still → `KEEP` + `review_required` (could be absolute blank **or** f
 - `JUNK_BLACK_SCAN_DEFECT`, `JUNK_NON_CLINICAL_PHOTO`
 
 Implementation: `src/preprocessing/protocol.py` + decision layer in `src/models/decision.py`.
-Typology keywords are also TF-IDF hand features in `src/features/ocr_features.py`.

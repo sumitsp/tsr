@@ -144,6 +144,7 @@ DEMOGRAPHIC_PATTERNS: tuple[str, ...] = (
     r"medical\s*record\s*number",
     r"\bmrn\b",
     r"date of birth",
+    r"birth\s*date",
     r"\bdob\b",
 )
 

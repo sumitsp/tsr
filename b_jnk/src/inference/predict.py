@@ -5,15 +5,15 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from typing import Any
 
-from src.explainability.evidence import explain_page
 from src.features.ocr_features import top_evidence
-from src.models.classifiers import FlatClassifier
+from src.models.bert_classifier import BertPageClassifier
 from src.models.decision import DecisionConfig, decide_from_proba
 from src.preprocessing.page_subclass import (
     JUNK_SUBTYPES,
     assign_blank_subtype,
     assign_junk_subtype,
     end_record_reason,
+    has_clinical_content,
     invoice_page_reason,
     shell_page_reason,
     junk_trigger_groups,
@@ -69,7 +69,7 @@ def _best_junk_label(labels: list[str], proba) -> str | None:
 class PageClassifierService:
     def __init__(
         self,
-        model: FlatClassifier,
+        model: BertPageClassifier,
         *,
         model_version: str,
         decision: DecisionConfig | None = None,
@@ -171,9 +171,7 @@ class PageClassifierService:
             ocr_text=ocr_text,
             config=self.decision,
         )
-        evidence = explain_page(self.model, ocr_text, decision.flag)
-        if not evidence:
-            evidence = top_evidence(ocr_text)
+        evidence = top_evidence(ocr_text)
         if decision.protocol_evidence:
             evidence = list(decision.protocol_evidence) + evidence
 
@@ -192,6 +190,17 @@ class PageClassifierService:
         invoice_reason = None if clinical_image else invoice_page_reason(ocr_text)
         shell = None if clinical_image or invoice_reason else shell_page_reason(ocr_text)
         closer = None if clinical_image or invoice_reason or shell else end_record_reason(ocr_text)
+        rule_hit = invoice_reason or (shell and shell[1]) or closer
+        if (
+            rule_hit
+            and flag != "JUNK"
+            and decision.p_keep >= self.decision.rule_veto_keep_prob
+            and has_clinical_content(ocr_text)
+        ):
+            review = True
+            reason = f"{reason}+rule_vetoed_by_model"
+            evidence = [f"rule_vetoed:{rule_hit}"] + evidence
+            invoice_reason = shell = closer = None
         if invoice_reason and flag != "JUNK":
             flag = "JUNK"
             review = True

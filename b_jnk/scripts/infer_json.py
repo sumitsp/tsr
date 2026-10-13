@@ -2,8 +2,8 @@
 """Docling or Azure Document Intelligence JSON -> page text -> KEEP / BLANK / JUNK Excel.
 
 Each page of each JSON is turned into plain text in memory (no files are
-written), then flagged by scripts/infer.py with its models, rules and safety
-net settings. The Excel is saved next to JSON_INPUT. Nothing is deleted.
+written), then flagged by scripts/infer.py with BERT and the word rules.
+The Excel is saved next to JSON_INPUT. Nothing is deleted.
 
   Docling (os_ocr.py):  {"1.jpg": {"markdown": ..., "document": {...}}, ...}
   Document Intelligence: an analyze result, with or without the service envelope;

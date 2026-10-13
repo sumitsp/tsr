@@ -44,6 +44,9 @@ INVOICE_WEAK = (
     "bill to", "ship to", "unit price", "charge description", "payments received",
     "revenue reconciliation",
 )
+# Fields on a registration or consent form ("billing address", "billing
+# information"), not a bill.
+BILLING_FIELD_RE = r"(?![A-Za-z]*\s+(?i:address|information|info|questions?|department|office|contact|phone))"
 # "accept" is a stamp on a short separator. On a long note it is the verb "accepted".
 COVER_ANY_LENGTH = ("cover page", "cover sheet")
 COVER_SHORT_ONLY = ("accept", "unaccept")
@@ -130,6 +133,18 @@ NOTE_CONTENT_RE = re.compile(
     r"(?:consult|progress|clinical|nursing|physician|visit|office)\s+notes)(?![a-z])",
     re.I,
 )
+# A lab report, requisition, or specimen sheet.
+LAB_CONTENT_RE = re.compile(
+    r"(?<![a-z])(specimens?|collect(?:ed|ion)|reference\s+(?:range|interval)|tests?\s+(?:ordered|requested)|"
+    r"panel|urinalysis|culture|hemoglobin|glucose|creatinine|sodium|potassium|cbc|cmp|tsh|lipid|"
+    r"patient report|lab(?:oratory)?\s+report)(?![a-z])"
+    r"|\b\d+(?:\.\d+)?\s?(?:mg/dl|g/dl|mmol/l|meq/l|u/l|iu/l|uiu/ml|ng/ml|pg/ml)\b",
+    re.I,
+)
+
+
+def has_clinical_content(text: str) -> bool:
+    return bool(NOTE_CONTENT_RE.search(text or "") or LAB_CONTENT_RE.search(text or ""))
 
 MODEL_TAG_TO_SUBTYPE: dict[str, str] = {
     **{s: s for s in JUNK_SUBTYPES},
@@ -174,6 +189,7 @@ MATCHERS: dict[str, re.Pattern[str]] = {
         *(q for v in TRIGGERS.values() for q in v),
     )
 }
+MATCHERS["billing"] = re.compile(MATCHERS["billing"].pattern + BILLING_FIELD_RE)
 
 
 def word_count(text: str) -> int:
@@ -305,6 +321,11 @@ def shell_page_reason(text: str) -> tuple[str, str] | None:
 def junk_trigger_groups(text: str) -> list[str]:
     """Junk subtypes whose triggers fire on the page (for reviewing KEEP pages)."""
     return list(_candidate_hits(text))
+
+
+def junk_trigger_hits(text: str) -> dict[str, list[str]]:
+    """Junk subtypes whose triggers fire, with the phrases that fired."""
+    return _candidate_hits(text)
 
 
 def _word_index(text: str, phrase: str) -> int:

@@ -14,7 +14,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from src.preprocessing.page_subclass import junk_trigger_groups
+from src.preprocessing.page_subclass import PROXIMITY_NAME, junk_trigger_hits
 from src.preprocessing.protocol import ProtocolHit, analyze_protocol, must_retain
 from src.preprocessing.taxonomy import Flag, to_flag
 
@@ -46,6 +46,10 @@ class DecisionConfig:
     # junk_blank_min_confidence must be met by one label, not by several junk subtypes
     # together; a page the model cannot place stays KEEP for review.
     require_confident_subtype: bool = True
+    # A word rule (billing, fax, cover, end of record) does not make a page JUNK
+    # when the model is this sure it is KEEP and the page has clinical or lab
+    # wording: a lab report carries "Bill Type", a faxed note a fax header.
+    rule_veto_keep_prob: float = 0.95
 
 
 @dataclass
@@ -125,10 +129,13 @@ def decide_from_proba(
         ((label_probs[lab], lab) for lab in config.demographic_override_labels if lab in label_probs),
         default=(0.0, None),
     )
+    # "records" near "request" is not enough: a patient's signed authorization says
+    # "I authorize Dr. X to request medical records".
+    phrases = [p for p in junk_trigger_hits(ocr_text).get(override_label or "", []) if p != PROXIMITY_NAME]
     trigger_ok = (
         not config.demographic_override_needs_trigger
         or override_label in config.demographic_override_no_trigger_labels
-        or override_label in junk_trigger_groups(ocr_text)
+        or bool(phrases)
     )
     model_over_demographic = (
         flag == "JUNK"

@@ -11,28 +11,10 @@
     "min_dictionary_words": 2,
     "empty_ocr_flag": "KEEP"
   },
-  "split": {
-    "group_key": "split_group",
-    "test_size": 0.25,
-    "random_state": 42,
-    "max_pages_per_template_train": 10
-  },
   "training": {
     "require_train_eligible": true,
     "include_medium_keep": true,
     "retain_delete_cost_ratio": 50.0
-  },
-  "tfidf": {
-    "word_ngram_range": [1, 2],
-    "char_ngram_range": [3, 5],
-    "word_max_features": 40000,
-    "char_max_features": 40000,
-    "min_df": 1,
-    "classifier": "logistic_regression"
-  },
-  "embeddings": {
-    "model_name": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
-    "classifier": "logistic_regression"
   },
   "decision": {
     "min_flag_confidence": 0.70,
@@ -52,7 +34,7 @@
   "bert": {
     "base_model": "distilbert-base-uncased",
     "model_dir": "models/bert_page",
-    "synthetic_clean": "synthetic/checked/clean.jsonl",
+    "synthetic_clean": ["synthetic_v2/clean.jsonl"],
     "annotated_jsonl": "data/raw/annotated_pages.jsonl",
     "max_length": 512,
     "head_share": 0.75,
