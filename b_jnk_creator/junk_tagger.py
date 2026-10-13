@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import csv
 import logging
+import os
 import re
 import sys
 import threading
@@ -28,7 +29,6 @@ from b_jnk_creator.catalog import (
     ImageItem,
     _natural_key,
     connect_container,
-    list_local_images,
     read_blob_image,
     read_local_image,
 )
@@ -50,7 +50,9 @@ JUNK_COLUMN = ""
 BLANK_COLUMN = ""
 
 INPUT_SOURCE = "local"  # "local" or "blob"
-# local: LOCAL_INPUT / <folder name> / <image name>
+# local: one folder or a list of folders. Each is searched at any depth for the chart
+# folders the sheet names; a chart's images may sit in it or in its subfolders.
+#   LOCAL_INPUT = [Path(r"C:\...\batch1"), Path(r"D:\scans")]
 LOCAL_INPUT = Path(r"C:\Users\sumit.pandey\Desktop\Imaging\images")
 # blob: PREFIX/<chart folder>/<image>
 STORAGE_ACCOUNT = "azsadve2aipoc"
@@ -156,14 +158,40 @@ def read_review_sheet(path: Path, sheet: str = "") -> list[SheetRow]:
     return rows
 
 
-def _list_folders_local(root: Path, folders: list[str]) -> list[ImageItem]:
+def _find_chart_dirs(roots: list[Path], folders: list[str]) -> dict[str, list[Path]]:
+    """Chart folder name -> every directory with that name under any root (any depth)."""
+    wanted = {f.casefold(): f for f in folders}
+    found: dict[str, list[Path]] = {}
+    for root in roots:
+        if not root.is_dir():
+            LOGGER.warning("LOCAL_INPUT folder does not exist: %s", root)
+            continue
+        LOGGER.info("Searching %s", root)
+        for dirpath, dirnames, _ in os.walk(root):
+            for name in dirnames:
+                key = name.casefold()
+                if key in wanted:
+                    found.setdefault(wanted[key], []).append(Path(dirpath) / name)
+    return found
+
+
+def _list_folders_local(roots: Path | list[Path], folders: list[str]) -> list[ImageItem]:
+    """Images of each chart folder, wherever it is under the roots. The first copy of an
+    image name wins when a chart appears in more than one place."""
+    roots = [Path(r) for r in (roots if isinstance(roots, (list, tuple)) else [roots])]
+    dirs = _find_chart_dirs(roots, folders)
     items: list[ImageItem] = []
     for folder in folders:
-        path = root / folder
-        if path.is_dir():
-            items.extend(list_local_images(path))
-        else:
-            LOGGER.warning("Folder not found under LOCAL_INPUT: %s", folder)
+        seen: set[str] = set()
+        found = []
+        for chart_dir in dirs.get(folder, []):
+            for path in sorted(chart_dir.rglob("*")):
+                if path.is_file() and path.suffix.lower() in IMAGE_EXTENSIONS and path.name.casefold() not in seen:
+                    seen.add(path.name.casefold())
+                    found.append(ImageItem(folder, path.name, str(path)))
+        if not found:
+            LOGGER.warning("No images found for folder %s under LOCAL_INPUT", folder)
+        items.extend(sorted(found, key=lambda item: _natural_key(item.image_name)))
     return items
 
 
