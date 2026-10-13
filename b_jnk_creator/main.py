@@ -15,6 +15,9 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from b_jnk_creator.catalog import (
+    ImageItem,
+    _natural_key,
+    apply_start_from,
     connect_container,
     list_images,
     list_local_images,
@@ -29,6 +32,8 @@ INPUT_SOURCE = "local"  # "local" or "blob"
 
 # local: a folder of chart folders, so this file exists:
 #   LOCAL_INPUT / <folder name> / <image name>
+# Several folders: a list. Each is searched at any depth; an image's folder name is its chart.
+#   LOCAL_INPUT = [Path(r"C:\...\images"), Path(r"D:\scans")]
 LOCAL_INPUT = Path(r"C:\Users\sumit.pandey\Desktop\Imaging\images")
 
 # blob: PREFIX/<chart folder>/<image>
@@ -48,6 +53,17 @@ PORT = 8767
 LOGGER = logging.getLogger("b_jnk_creator")
 
 
+def chart_folder(image: Path, root: Path) -> str:
+    """The chart an image belongs to: its folder, or the nearest folder above it with a
+    digit in its name (chart ids have digits; "images" or "png" subfolders do not)."""
+    for folder in image.parents:
+        if folder == root:
+            break
+        if any(ch.isdigit() for ch in folder.name):
+            return folder.name
+    return image.parent.name
+
+
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     source = INPUT_SOURCE.strip().lower()
@@ -64,7 +80,17 @@ def main() -> None:
             if source == "local":
                 LOGGER.info("Listing local images under %s", LOCAL_INPUT)
                 app.read_image = read_local_image
-                items = list_local_images(LOCAL_INPUT, START_FROM)
+                roots = LOCAL_INPUT if isinstance(LOCAL_INPUT, (list, tuple)) else [LOCAL_INPUT]
+                merged: dict[tuple[str, str], object] = {}
+                for root in roots:
+                    if not Path(root).exists():
+                        LOGGER.warning("LOCAL_INPUT folder does not exist: %s", root)
+                        continue
+                    for item in list_local_images(Path(root)):
+                        item = ImageItem(chart_folder(Path(item.blob_name), Path(root)), item.image_name, item.blob_name)
+                        merged.setdefault((item.folder, item.image_name), item)  # first copy wins
+                items = sorted(merged.values(), key=lambda i: (i.folder.lower(), _natural_key(i.image_name)))
+                items = apply_start_from(items, START_FROM)
             else:
                 LOGGER.info("Connecting to %s / %s", STORAGE_ACCOUNT, CONTAINER_NAME)
                 container = connect_container(STORAGE_ACCOUNT, CONTAINER_NAME)

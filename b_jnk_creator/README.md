@@ -57,7 +57,7 @@ The review sheet is an `.xlsx` or `.csv` with a folder column, an id column (`1`
 - Blank Page = Yes: written as `BLANK` when the tool starts, without opening the image.
 - Rows go into the same `CSV_PATH` that `main.py` writes. A page that already has a row is never overwritten.
 
-Edit RUN CONFIG at the top of `junk_tagger.py` (`REVIEW_SHEET`, `LOCAL_INPUT` or blob settings, `CSV_PATH`). `LOCAL_INPUT` can be one folder or a list of folders; each is searched at any depth for the chart folders the sheet names. Then:
+Edit RUN CONFIG at the top of `junk_tagger.py` (`REVIEW_SHEET`, `LOCAL_INPUT` or blob settings, `CSV_PATH`), then:
 
 ```bash
 python b_jnk_creator/junk_tagger.py
