@@ -466,7 +466,7 @@ relation relationship guarantor partner life
 """.split())
 # Lines that are page furniture whatever words they use.
 FURNITURE_RE = re.compile(
-    r"generated\s+by|printed\s+(?:by|on|at)|print\s+date|report\s+(?:date|request)|page\s+\d+\s+of\s+\d+"
+    r"generated\s+by|printed\s*(?:by|on|at|:)|print\s+date|report\s+(?:date|request)|page\s+\d+\s+of\s+\d+"
     r"|electronically\s+signed\s+and\s+reviewed|confidential|https?://|www\.|\S+@\S+",
     re.I,
 )
@@ -511,46 +511,91 @@ def body_words(text: str) -> list[str]:
     return words
 
 
+# Header fields: a line with one of these labels is the page header or footer.
+HEADER_LABEL_RE = re.compile(
+    r"patient\s*(?:name|id)?\s*:|\bdob\b|date\s+of\s+birth|birth\s*date|\bmrn\b|\bmr#|\bfin\s*:|encounter\s+(?:id|date)"
+    r"|\badmit\s*:|\bdisch(?:arge)?\s*:|\bacct\b|account\s*(?:#|no|number)|\bage\s*:|\bsex\s*:|\bgender\s*:"
+    r"|\bid\s*#|report\s+id|chart\s*#|\bssn\b",
+    re.I,
+)
+ADDRESS_RE = re.compile(r"\baddress\s*:?\s*\d|\b[A-Z]{2}[\s-]+\d{5}(?:-\d{4})?\b|^\s*\d{2,6}\s+[A-Za-z]|\(\d{3}\)\s*\d{3}-\d{4}|\b\d{3}[-.]\d{3}[-.]\d{4}\b")
+NAME_DATE_LINE_RE = re.compile(r"^[\W\d]*[A-Za-z'\-]+,?\s+[A-Za-z'\-]+[^\n]{0,40}\d{1,2}/\d{1,2}/\d{2,4}[^\n]{0,30}$")
+SIGNATURE_LINE_RE = re.compile(
+    r"(?:electronically\s+)?signed\s+(?:electronically\s+)?by\b(?!.*print)|\bsigned\s+date\s*:|\bauthenticated\s+by"
+    r"|\b(?:MD|M\.D\.|DO|D\.O\.|NP|PA-C|PA|OD|DPM|RN|LPN|PT|DPT|DNP|APRN|FNP)\b|physician\s+assistant|\blicense\s*#",
+)
+HEADER_ONLY_MAX_LINES = 2
+HEADER_ONLY_MAX_LINE_WORDS = 6
+
+
+def content_lines(text: str) -> list[str]:
+    """Lines that are not page furniture: not the patient header, address, print or page
+    footer, a one-line flag legend, a column-heading row, or scan specks. The first line is
+    letterhead and only counts when it is something more."""
+    out: list[str] = []
+    for n, line in enumerate((text or "").splitlines()):
+        line = line.strip()
+        words = re.findall(r"[A-Za-z]{3,}", line)
+        if not words:
+            continue
+        if FURNITURE_RE.search(line) and len(line.split()) <= 25:
+            continue
+        # A long line is page text that OCR ran together, not a header.
+        if len(tokens := line.split()) <= 20 and (HEADER_LABEL_RE.search(line) or NAME_DATE_LINE_RE.match(line)):
+            continue
+        if ADDRESS_RE.search(line) and len(words) <= 10:
+            continue
+        if sum("=" in t and len(t) > 1 for t in tokens) * 2 >= len(tokens):
+            continue  # a one-line legend such as "*=Abnormal C=Critical L=Low"
+        if all(w.lower() in HEADER_VOCAB for w in words):
+            continue  # a column-heading row
+        if n == 0 and len(tokens) <= 12 and not re.search(r"signed|[a-z]{3,}\s+[a-z]{3,}", line):
+            continue  # letterhead: a name or title, not a sentence
+        out.append(line)
+    return out
+
+
 def header_only_reason(text: str) -> str | None:
-    """A page with a header, a section title, or a footer, and no body under it."""
+    """A page with a header, a section title, or a footer, and no body under it: at most two
+    short title lines, no signature or provider, no clinical values or codes."""
     from src.preprocessing.protocol import CLINICAL_VALUE_RE
 
     if not (text or "").strip() or word_count(text) > HEADER_ONLY_MAX_WORDS:
         return None
     if CLINICAL_VALUE_RE.search(text) or ICD_CODE_RE.search(text) or DATA_PAGE_TITLE_RE.search(text):
         return None
-    # An all-caps note has no lower-case words; its clinical vocabulary still shows.
+    lines = content_lines(text)
+    if len(lines) > HEADER_ONLY_MAX_LINES:
+        return None
+    if any(len(line.split()) > HEADER_ONLY_MAX_LINE_WORDS or SIGNATURE_LINE_RE.search(line) for line in lines):
+        return None
     if len(clinical_words(text)) > HEADER_ONLY_MAX_CLINICAL_WORDS:
-        return None
-    if len(body_words(text)) > HEADER_ONLY_MAX_CONTENT_WORDS:
-        return None
-    fields = {re.sub(r"\W+", " ", m.group(0).lower()) for m in DATA_FIELD_RE.finditer(text)}
-    if len(fields) >= DATA_PAGE_MIN_FIELDS:
         return None
     return "header_only"
 
 
 # Signs of record-retrieval paperwork: (pattern, weight). A strong sign is 1, a weak one 0.5.
 RETRIEVAL_CUES: tuple[tuple[str, float], ...] = (
-    (r"chart\s+(?:review|retrieval|request|pull)", 1),
-    (r"(?:record|chart)s?\s+retrieval|retrieval\s+(?:method|option|process|effort|only)", 1),
-    (r"retrieved\s+by|record(?:s)?\s+collected\s+from", 1),
-    (r"risk\s+adjustment", 1),
-    (r"(?:chart|chase|outreach|site|project)\s+(?:id|name)\b", 1),
-    (r"pull\s+(?:list|chart)", 1),
-    (r"required\s+dos|measure\s*/\s*dates\s+of\s+service", 1),
-    (r"true\s+and\s+accurate\s+cop", 1),
-    (r"custodian\s+of\s+(?:medical\s+)?records", 1),
-    (r"signature\s+log", 1),
-    (r"medical\s+record\s+request|records?\s+request(?:ed)?\s*:", 1),
-    (r"total\s+(?:charts|pages)\b", 1),
+    (r"chart\s*(?:review|retrieval|request|pull)", 1),
+    (r"(?:record|chart)s?\s*retrieval|retrieval\s*(?:method|option|process|effort|only)", 1),
+    (r"retrieved\s*by|record(?:s)?\s*collected\s*from", 1),
+    (r"risk\s*adjustment", 1),
+    (r"(?:chart|chase|outreach|site|project)\s*(?:id|name)\b", 1),
+    (r"pull\s*(?:list|chart)", 1),
+    (r"required\s*dos|measure\s*/\s*dates\s*of\s*service", 1),
+    (r"true\s*and\s*accurate\s*cop", 1),
+    (r"custodian\s*of\s*(?:medical\s*)?records", 1),
+    (r"signature\s*log", 1),
+    (r"medical\s*record\s*request|records?\s*request(?:ed)?\s*:", 1),
+    (r"total\s*(?:charts|pages)\b", 1),
+    (r"e-?request|request\s*id\b|requestor\s*(?:name|type)", 1),
     (r"\{\{\s*\w+", 1),
-    (r"\b\d+\s+to\s+\d+\b[\s\S]{0,80}\b\d+\s+to\s+\d+\b", 1),  # page ranges of an index sheet
-    (r"member\s+id|health\s+plan|plan\s+members?", 0.5),
-    (r"dates?\s+of\s+service", 0.5),
-    (r"provider\s+(?:support|portal|group)|secure\s+(?:provider\s+)?portal|upload", 0.5),
-    (r"on\s+behalf\s+of", 0.5),
-    (r"\bcms\b|medicare\s+advantage", 0.5),
+    (r"\b\d+\s*to\s*\d+\b[\s\S]{0,80}\b\d+\s*to\s*\d+\b", 1),  # page ranges of an index sheet
+    (r"member\s*id|health\s*plan|plan\s*members?", 0.5),
+    (r"dates?\s*of\s*service", 0.5),
+    (r"provider\s*(?:support|portal|group)|secure\s*(?:provider\s*)?portal|upload", 0.5),
+    (r"on\s*behalf\s*of", 0.5),
+    (r"\bcms\b|medicare\s*advantage", 0.5),
 )
 _RETRIEVAL = [(re.compile(p, re.I), w) for p, w in RETRIEVAL_CUES]
 RETRIEVAL_MIN_SCORE = 2.0

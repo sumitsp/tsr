@@ -1,0 +1,7 @@
+Patient Name: Hill, Hope   Date of Birth: 01/06/1945
+Gender: F   Encounter Date: 08/20/2025   Encounter ID: 943614790
+Encounter
+ChiefComplaint: Med refill (Appt time: 8/20/2025 11:45:00 AM) (Arrival time: 11:34 AM)
+Signed electronically by Yogesh Patel, Physician Assistant (8/20/2025 5:36 PM)
+Patient MRN: D2002017185-7008067
+Encounter ID: 943614790   Page 2 of 2

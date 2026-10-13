@@ -1,0 +1,22 @@
+IDIF IDAHO FALLS COMMUNITY HOSPITAL
+Patient Name: Cain, Jacob VIRGINIA
+MRN: 00466171   Admit: 7/28/2025
+FIN: IDIF5100188853   Disch: 7/28/2025
+DOB/Age/Sex: 03/12/1949 72 years Female   Admitting:
+Orders
+Patient Care
+Order: Cardiac ED Alert
+Order Date/Time: 7/28/2025 15:04 CDT
+Order Status: Discontinued   Department Status: Discontinued   Activity Type: Patient Care
+End-state Date/Time: 7/31/2025 16:16 MDT   End-state Reason:
+Ordering Physician: SYSTEM,SYSTEM Cerner **DO NOT MODIFY/DELETE**   Consulting Physician:
+Entered and Electronically Signed By: SYSTEM,SYSTEM Cerner **DO NOT MODIFY/DELETE** on 7/28/2025 15:04 CDT
+Order Details: 7/28/25 3:04:27 PM CDT
+Action Type: Discontinue   Action Date/Time: 7/31/2025 17:16 CDT
+Communication Type:
+Review Information:
+Doctor Cosign: Not Required
+Action Type: Order   Action Date/Time: 7/28/2025 15:04 CDT
+Communication Type: Discern Expert
+Doctor Cosign: Not Required
+Report Request ID: 91853713   Page 59 of 90   Print Date/Time: 4/24/2026 Cain, Jacob

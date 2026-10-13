@@ -1,0 +1,23 @@
+IDIF IDAHO FALLS COMMUNITY HOSPITAL
+Patient Name: Cain, Jacob VIRGINIA   MRN: 00466171   Admit: 7/28/2025
+DOB/Age/Sex: 03/12/1949 72 years Female
+Pain
+Legend: c=Corrected, @=Abnormal, C=Critical, L=Low, H=High, f=Result Comment, T=Textual, W=Witness Action
+Comfort Measures
+Recorded Date 7/28/2025  Recorded Time 15:09 MDT  Recorded By Calderwood,CNA,McKinsey
+Comfort Measures See Below T1
+Textual Results
+T1: 7/28/2025 15:09 MDT (Comfort Measures) Comfortable environment, Quiet environment, Relaxation, Rest
+General
+Subjective
+Recorded Date 7/28/2025  Recorded Time 14:25 MDT  Recorded By Phillips,RN,Jordyn S
+Cardiovascular Symptoms See Below T2
+Respiratory Symptoms None
+GI Symptoms None
+Genitourinary Symptoms None
+Neurological Symptoms None
+T2: 7/28/2025 14:25 MDT (Cardiovascular Symptoms) Chest pain/pressure at rest, Chest pain/pressure with activity
+Trauma
+Primary Airway Assessment
+Airway Interventions None
+Report Request ID: 91853713   Page 80 of 90   Print Date/Time: 4/24/2026 Cain, Jacob

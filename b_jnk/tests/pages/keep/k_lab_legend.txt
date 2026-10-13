@@ -1,0 +1,17 @@
+Print date: 4/21/26 16:16   C U M U L A T I V E   R E P O R T   Page 5
+Printed by: CLUJAN05   Selected Encounters
+ALTA VISTA REGIONAL HOSPITAL   LABORATORY
+104 LEGION DRIVE   DR. SANJAY LAHIRI
+LAS VEGAS NM 87701   CLIA Number: 32D0672876
+Phone: 505-426-3500
+NAME: Boyd, David B   DOB: 09/07/1992   PCP: NO PCP
+MR# : 000114980   AGE: 70 SEX: M
+Abnormal Flags Legend:
+<C = Panic Low
+>C = Panic High
+# = Verbal Result Abnormal
+#C = Verbal Result Critical Abnormal
+H = High
+HC = Critical High
+L = Low
+LC = Critical Low

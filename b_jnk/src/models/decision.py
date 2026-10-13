@@ -10,6 +10,7 @@ Nothing is deleted from the packet by this module — flags + audit tags only.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 import numpy as np
@@ -17,6 +18,14 @@ import numpy as np
 from src.preprocessing.page_subclass import FAX_STAMP, LAB_CONTENT_RE, PROXIMITY_NAME, junk_trigger_hits
 from src.preprocessing.protocol import ProtocolHit, analyze_protocol, must_retain
 from src.preprocessing.taxonomy import Flag, to_flag
+
+
+CARD_OR_BILLING_RE = re.compile(
+    r"member\s*(?:id|#|no)|subscriber|group\s*(?:#|no\.?|number)\b|\brx\s*(?:bin|grp|pcn)\b|\bcopay|policy\s*(?:#|no|number)"
+    r"|driver'?s?\s+licen[cs]e|\bclass\s*:|\bexpires?\b|\bcharges?\b|\bamount\b|\bbalance\b|\bpayment|\bstatement\b"
+    r"|\bcpt\b|\bclaims?\b|\$\s*\d|social\s+security|identification\s+card|\bdl\s+[a-z]?\d|\bexp\b|\biss\b",
+    re.I,
+)
 
 
 @dataclass
@@ -140,9 +149,14 @@ def decide_from_proba(
         p for p in junk_trigger_hits(ocr_text).get(override_label or "", [])
         if p != PROXIMITY_NAME and not (lab_page and p in FAX_STAMP)
     ]
+    # A label that needs no phrase still needs the page to look like one: an ID or
+    # insurance card, or a billing field, not just a name and a date of birth.
+    no_trigger_ok = override_label in config.demographic_override_no_trigger_labels and bool(
+        CARD_OR_BILLING_RE.search(ocr_text or "")
+    )
     trigger_ok = (
         not config.demographic_override_needs_trigger
-        or override_label in config.demographic_override_no_trigger_labels
+        or no_trigger_ok
         or bool(phrases)
     )
     model_over_demographic = (

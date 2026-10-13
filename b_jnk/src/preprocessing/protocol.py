@@ -151,6 +151,9 @@ ALWAYS_KEEP_PATTERNS: dict[str, tuple[str, ...]] = {
         r"advance\s+beneficiary\s+notice",
         r"relationship\s+to\s+patient\s*:",
         r"signature\s+captured\s+with",
+        r"\bdisclos\w*\s+your\s+(?:phi|protected\s+health\s+information|health\s+information)",
+        r"\b(?:use|share)\w*\s+(?:or\s+disclos\w+\s+)?your\s+(?:phi|protected\s+health\s+information)",
+        r"privacy\s+of\s+your\s+(?:phi|health\s+information)",
     ),
     # A clinician's letter about this patient's visit.
     "KEEP_CLINICAL_LETTER": (
@@ -161,6 +164,8 @@ ALWAYS_KEEP_PATTERNS: dict[str, tuple[str, ...]] = {
     ),
     "KEEP_AFTER_VISIT_SUMMARY": (
         r"after\s+visit\s+summary",
+        r"arrive\s+(?:by\s+\d|\d+\s+minutes\s+(?:before|prior|early))",
+        r"(?:before|prior\s+to)\s+your\s+(?:appointment|procedure|visit)",
     ),
 }
 # A provider signature page is short: the signature block and little else.
@@ -176,6 +181,10 @@ SIGNATURE_PAGE_MAX_WORDS = 60
 # A HEDIS "what to send" list names sections but never fills them in.
 CLINICAL_VALUE_RE = re.compile(
     r"\b\d+(?:\.\d+)?\s?(?:mg|mcg|ml|units?|unt|meq|mmol/l|mg/dl|g/dl|%)\b(?!\s*fee)"
+    r"|\b\d+(?:\.\d+)?\s*-\s*\d+(?:\.\d+)?\s+(?:[a-z]+/[a-z]+|%)"  # reference range with units
+    r"|\d\s*\(\s*[<>]=?\s*\d"  # a result with its range, "30.70 (>=20.00)"
+    r"|\b(?:return|rtc|follow[- ]?up|f/u|recheck)\b[^\n]{0,15}?\b\d+\s*(?:days?|wks?|weeks?|mos?|months?|years?)\b"
+    r"|\b(?:positive|negative|detected|not\s+detected)\b[^\n]{0,40}\b(?:negative|positive)\b"
     r"|\b(?:bp|blood\s+pressure)\s*:?\s*\d{2,3}/\d{2,3}"
     r"|\b(?:temp|pulse|heart\s+rate|resp|spo2|o2\s+sat|weight|height|bmi|a1c|hba1c)\s*:?\s*\d"
     r"|\b(?:hpi|cc|chief\s+complaint|reason\s+for\s+visit|assessment|impression|plan|imp/plan|allergies"

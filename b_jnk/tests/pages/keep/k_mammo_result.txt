@@ -1,0 +1,15 @@
+CenterWell Senior Primary Care AZ PC - 10280 N 91st Ave, PEORIA AZ 85345-6461
+Brown Justin (id #2415966, dob: 02/01/1951
+Lab Result 04/13/2026 (#206995098, 01/23/2025)
+CENTERWELL PEORIA
+10280 N 91st Ave
+PEORIA, AZ 85345-6461
+PHYSICIAN INFORMATION   PATIENT INFORMATION
+Requesting: Ramirez, Sabrina   Name: Brown DOREEN M
+DOB: 04/14/1955  Sex: female  Tel: 480-468-2167
+REPORT DETAILS   REPORT DATES
+Procedure Name: MAMMOGRAM, SCREENING   Order: 01/23/2025
+Session Id:   Procedure: 05/05/2025 00:00:00
+REPORT
+Exam:
+Patient: Brown Justin DOB: 02/01/1951
