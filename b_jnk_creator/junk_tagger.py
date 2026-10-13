@@ -13,6 +13,7 @@ Open the printed URL. Enter saves the page and opens the next junk image.
 from __future__ import annotations
 
 import csv
+import io
 import logging
 import re
 import sys
@@ -94,13 +95,22 @@ def _cell(value: object) -> str:
 def _read_table(path: Path, sheet: str) -> tuple[list[str], list[list[str]]]:
     if not path.is_file():
         raise FileNotFoundError(f"REVIEW_SHEET does not exist: {path}")
-    if path.suffix.lower() == ".csv":
-        with path.open(newline="", encoding="utf-8-sig") as fh:
-            table = [row for row in csv.reader(fh)]
-    elif path.suffix.lower() in {".xlsx", ".xlsm"}:
+    # An .xlsx is a zip file ("PK"), whatever its extension says.
+    is_xlsx = path.read_bytes()[:2] == b"PK"
+    if path.suffix.lower() == ".csv" and not is_xlsx:
+        raw = path.read_bytes()
+        # Excel on Windows saves CSV in cp1252 unless "CSV UTF-8" is chosen.
+        for encoding in ("utf-8-sig", "cp1252", "latin-1"):
+            try:
+                text = raw.decode(encoding)
+                break
+            except UnicodeDecodeError:
+                continue
+        table = [row for row in csv.reader(io.StringIO(text, newline=""))]
+    elif path.suffix.lower() in {".xlsx", ".xlsm"} or is_xlsx:
         from openpyxl import load_workbook
 
-        book = load_workbook(path, read_only=True, data_only=True)
+        book = load_workbook(io.BytesIO(path.read_bytes()), read_only=True, data_only=True)
         ws = book[sheet] if sheet else book.worksheets[0]
         table = [[_cell(v) for v in row] for row in ws.iter_rows(values_only=True)]
         book.close()
