@@ -13,7 +13,7 @@ from src.preprocessing.page_subclass import (
     assign_blank_subtype,
     assign_junk_subtype,
     end_record_reason,
-    has_clinical_content,
+    clinical_words,
     invoice_page_reason,
     shell_page_reason,
     junk_trigger_groups,
@@ -195,7 +195,7 @@ class PageClassifierService:
             rule_hit
             and flag != "JUNK"
             and decision.p_keep >= self.decision.rule_veto_keep_prob
-            and has_clinical_content(ocr_text)
+            and len(clinical_words(ocr_text)) >= self.decision.rule_veto_min_clinical_words
         ):
             review = True
             reason = f"{reason}+rule_vetoed_by_model"

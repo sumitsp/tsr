@@ -152,6 +152,12 @@ LAB_CONTENT_RE = re.compile(
 def has_clinical_content(text: str) -> bool:
     return bool(NOTE_CONTENT_RE.search(text or "") or LAB_CONTENT_RE.search(text or ""))
 
+
+def clinical_words(text: str) -> set[str]:
+    """Distinct clinical-note and lab words on the page."""
+    found = (*NOTE_CONTENT_RE.finditer(text or ""), *LAB_CONTENT_RE.finditer(text or ""))
+    return {" ".join(m.group(0).lower().split()) for m in found}
+
 MODEL_TAG_TO_SUBTYPE: dict[str, str] = {
     **{s: s for s in JUNK_SUBTYPES},
     "JUNK_INSURANCE_ID": "JUNK_INVOICE",

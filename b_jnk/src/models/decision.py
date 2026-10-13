@@ -47,9 +47,12 @@ class DecisionConfig:
     # together; a page the model cannot place stays KEEP for review.
     require_confident_subtype: bool = True
     # A word rule (billing, fax, cover, end of record) does not make a page JUNK
-    # when the model is this sure it is KEEP and the page has clinical or lab
-    # wording: a lab report carries "Bill Type", a faxed note a fax header.
+    # when the model is this sure it is KEEP and the page has at least this many
+    # different clinical or lab words: a lab report carries "Bill Type", a faxed
+    # note a fax header. One word is not enough: a fax cover's footer can name
+    # the attached "Radiology Report".
     rule_veto_keep_prob: float = 0.95
+    rule_veto_min_clinical_words: int = 3
 
 
 @dataclass
