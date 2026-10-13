@@ -1,0 +1,2 @@
+Patient Name: Barbara Allen, Date of Birth: 11/27/1967 Sex: F Encounter Id: 370187746 Encounter Date: March 23, 2026
+4

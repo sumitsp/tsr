@@ -166,10 +166,11 @@ ALWAYS_KEEP_PATTERNS: dict[str, tuple[str, ...]] = {
 # A provider signature page is short: the signature block and little else.
 # (A superbill also says "rendering provider", but it is a full page of charges.)
 SIGNATURE_PAGE_RE = re.compile(
-    r"rendering\s+provider|service\s+provider\s*:|electronically\s+signed\s+(?:by|on)|provider\s+signature",
+    r"rendering\s+provider|service\s+provider\s*:|electronically\s+signed\s+(?:by|on)|provider\s+signature"
+    r"|\b(?:co-?)?signed\s+by\s*:|e-signed",
     re.I,
 )
-CREDENTIAL_RE = re.compile(r"\b(?:MD|M\.D\.|DO|OD|NP|PA-C|PA|DPM|DNP|APRN|FNP|PhD|RN)\b")
+CREDENTIAL_RE = re.compile(r"\b(?:MD|M\.D\.|DO|OD|NP|PA-C|PA|DPM|DNP|APRN|FNP|PhD|RN)\b|\bDr\.?\s+[A-Z]")
 SIGNATURE_PAGE_MAX_WORDS = 60
 # Filled-in clinical values: doses, vitals, sig lines, and section fields with content.
 # A HEDIS "what to send" list names sections but never fills them in.

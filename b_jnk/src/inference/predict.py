@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from typing import Any
 
 from src.features.ocr_features import top_evidence
@@ -11,6 +11,7 @@ from src.models.decision import DecisionConfig, decide_from_proba
 from src.preprocessing.page_subclass import (
     JUNK_SUBTYPES,
     assign_blank_subtype,
+    admin_page_reason,
     assign_junk_subtype,
     end_record_reason,
     clinical_words,
@@ -82,7 +83,7 @@ class PageClassifierService:
         self.min_dictionary_words = min_dictionary_words
         self.route_short_pages = route_short_pages
 
-    def predict_one(
+    def _predict_one(
         self,
         page_id: str,
         ocr_text: str,
@@ -251,6 +252,34 @@ class PageClassifierService:
             p_junk=round(decision.p_junk, 4),
             subclass=subclass,
             subclass_reason=subclass_reason,
+        )
+
+    def predict_one(
+        self,
+        page_id: str,
+        ocr_text: str,
+        *,
+        content_meta: dict[str, Any] | None = None,
+    ) -> InferenceResult:
+        result = self._predict_one(page_id, ocr_text, content_meta=content_meta)
+        if result.flag != "KEEP":
+            return result
+        # Never-junk pages (clinical images, patient forms, letters, signatures) stay KEEP.
+        if analyze_protocol(ocr_text).retain_clinical_image:
+            return result
+        admin = admin_page_reason(ocr_text)
+        if admin is None:
+            return result
+        subtype, why = admin
+        return replace(
+            result,
+            flag="JUNK",
+            review_required=True,
+            audit_tag=subtype,
+            subclass=subtype,
+            subclass_reason=f"rule:{why}",
+            decision_reason=f"{result.decision_reason}+admin_rule:{why}",
+            top_evidence=f"admin_rule:{why}",
         )
 
     def predict_batch(self, pages: list[dict[str, Any]]) -> list[InferenceResult]:

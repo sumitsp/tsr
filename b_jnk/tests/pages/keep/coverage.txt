@@ -1,0 +1,13 @@
+Black, Clara   (MRN: 9446105) DOB: 06/16/1941
+Payor Plan Address   Payor Plan Phone Number   Payor Plan Fax Number   Effective Dates
+PO BOX 30978 SALT LAKE CITY UT 84130   800-638-3120
+Subscriber Name   Subscriber Birth Date   Member ID
+Black, Clara   06/16/1941   981703774
+MC UNITED - WA AARP MEDICARE WALGREENS HMO PLAN_032 - H3805-032
+Payor   Plan   Insurance Group   Employer/Plan Group
+MC UNITED   WA AARP MEDICARE WALGREENS HMO PLAN_032 - H3805-032   90894
+Payor Address   Payor Phone Number   Payor Fax Number   Effective Dates
+PO BOX 30788 SALT LAKE CITY UT 84130   877-836-6806   248-733-6143   1/1/2026 - None Entered
+Subscriber Name   Subscriber Birth Date   Member ID
+Black, Clara   06/16/1941   981703774
+Printed by Hightower, Kimberly [20003] 6/22/2026 7:53 AM

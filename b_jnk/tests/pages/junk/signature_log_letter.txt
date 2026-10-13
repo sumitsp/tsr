@@ -1,0 +1,20 @@
+datavant
+Formerly named Ciox Health
+Have questions? Contact Datavant Provider Support 1-877-445-9293
+Datavant 2222 W. Dunlap Ave Phoenix, AZ 85021
+To Whom It May Concern:
+Documentation requirements state that the medical record for each patient visit should include the date and legible identity of the provider including the signature and credential. As part of the chart review process the health plan had requested that you provide a copy of a signature log as noted below.
+We have included a template for you to complete prior to beginning the chart review process. The example below provides an area to list all providers who document in your patient's medical records. This includes physicians, physicians' assistants and nurse practitioners.
+NPI. Print the provider's National Provider Identifier.
+Provider Full Name. Print the provider's name (MD, DO, NP and PA only).
+Credential. Print the provider's credential.
+Legal Signature. The provider should sign their legal signature. (full name including credential).
+Actual Chart Signature Variations. Sign all possible ways that the provider would normally sign the medical record, including full signature, initials, first initial last name, etc.
+A Datavant representative will review your signature log prior to executing the chart review to ensure compliance.
+It is recommended that you retain this document with your policies and procedure and update it annually or during new staff orientation.
+Sample:
+Group Name ABC Medical Group State TX
+NPI  Provider Full Name  Credential  Legal Signature  Actual Chart Signature Variations
+1234567890  John Doe  D.O.  John Doe, DO  JohnDoeDO
+JDoeDO
+JDDO

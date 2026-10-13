@@ -1,0 +1,6 @@
+Patient Name: Barbara Allen, Date of Birth: 11/27/1967 Sex: F Encounter Id: 370187746 Encounter Date: March 23, 2026
+Assessment & Plan
+1. Type 2 diabetes mellitus without complications - E11.9 - A1c 7.8, increase metformin to 1000 mg twice daily.
+2. Essential hypertension - I10 - controlled, continue lisinopril.
+Follow up in 3 months.
+4

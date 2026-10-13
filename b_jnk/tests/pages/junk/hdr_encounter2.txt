@@ -1,0 +1,2 @@
+Patient Name: J DUESADA Date of Birth: 01/01/1944 Sex: M Encounter Id: 448451846 Encounter Date: April 27, 2026
+6

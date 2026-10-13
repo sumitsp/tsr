@@ -1,0 +1,20 @@
+Optum
+Optum ID: {{Location2_Name}}
+Optum on behalf of Optum
+Medical Record Request: Patient List
+Secure Online Submission: https://uploads.episource.com
+Username: {{Location2_Name}}
+Password: {{Location2_Portal_Password}}
+Please submit member list in all communications with information in the Comments to indicate CNA if chart is not available. Return a separate document for each member named with Optum chart ID via one of the methods below.
+Remote Access: Medical records will be retrieved through a designated connection or electronic medical record (EMR) system. If you would like to establish access or have questions, please contact us at 1-888-292-5313 or email OIR_Optum_Records@optum.com
+Fax to: {{Location2_Project_Fax_Back_Number}}
+Traceable mail to: 1 E Washington St, STE 900, Phoenix, AZ 85004
+Email to: {{Location2_Project_Return_Email}} To protect ePHI, please use encrypted email.
+Onsite retrieval: Contact an Optum Representative to schedule.
+Relevant documents:
+History & Physical Reports   Consult/Specialist Notes or Letters   Emergency Department Records
+Discharge Summary   Operative Notes   Physician Orders
+Progress Notes   Procedure Notes/Reports   Physical, Speech, and/or Occupational Therapist Reports
+Total Charts Requested: {{RowCount:q2}}
+File  Member Last Name  Member First Name  DOB  Chart ID  Required DOS  Health Plan  Comments
+{{T  {{CHART_MEMBER_LAST_NAME}}  {{CHART_MEMBER_FIRST_NAME}}  {{CHART_MEMBER_DOB}}  {{CHART_CHART_ID_DISPLAY}}  {{LOCATION2_PROJECT_ELIGIBILITY_START}}  {{CHART_HEALTH_PLAN_FULL_NAME}}  {{CHART_MEMBERLIST_COMMENTS}}

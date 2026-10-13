@@ -26,8 +26,6 @@ KEEP,face sheet or demographics page,80,includes insurance and guarantor section
 KEEP,registration or patient information form,60,
 KEEP,signature or attestation page,60,short page
 KEEP,short clinical continuation page,80,"short page: the last few lines of a plan or note, then page x of y"
-KEEP,chart table of contents or EMR index,40,lists clinical sections with page numbers
-KEEP,clinical section divider page,40,"short page naming a clinical section, for example Radiology Reports"
 KEEP,progress note that mentions records or requests,60,"genuine visit note whose history or plan mentions records requested from another provider, or please send copy to PCP"
 KEEP,clinical page printed with an EMR footer,60,"footer has print date, user, page x of y, and a long confidentiality notice"
 KEEP,clinical page with fax transmission header,60,"top line like From: (555) 201-3344  To: (555) 201-9900  P.004/017  11/14/2025 09:12"
@@ -79,3 +77,14 @@ KEEP,after visit summary appointments page,50,"upcoming appointment with arrival
 KEEP,provider signature page,60,"short page: Service Provider:, Rendering Provider:, a provider name with MD, DO or OD, maybe one line of a procedure code"
 KEEP,short referral thank-you note,60,"Thank you for your referral of the patient whom I saw on a date. Please see the attached visit note. Footer may say Fax cover page"
 KEEP,faxed specialist exam note with facsimile notice,60,"letterhead with a long facsimile confidentiality notice, then a full exam: reason for visit, HPI, meds with doses, allergies, exam findings"
+JUNK_OTHERS,header-only EMR page,150,"only the repeated EMR header and/or footer: patient name, DOB, sex, MRN, FIN, encounter id and date, admit/discharge, report id, page x of y, print date; maybe a section title such as Office and Clinic Notes, Consents, History & Physicals, Office Visit - date, Imaging Results; no body text at all"
+JUNK_OTHERS,clinical section divider page,70,"short page naming a chart section, for example Encounters and Procedures, Radiology Reports, Tab C Lab Results, with the patient name"
+JUNK_OTHERS,empty EMR form page,50,"a printed EMR section with nothing recorded: No of Injections 0, an empty Guarantor table with only column headings, No results found"
+JUNK_COVER_PAGE,EMR record index page,80,"Patient Medical Record title, patient name, DOB, account number, address, a table of sections with page ranges and Total Pages, generated-by footer"
+JUNK_COVER_PAGE,retrieval cover sheet,80,"Confidential Patient Information or Retrieved by a retrieval vendor; patient name, DOB, member id, record collected from, retrieval method, service note, total pages"
+JUNK_RECORD_REQUEST,health plan chart review letter,100,"Dear Provider Group, a health plan or its vendor announces a risk adjustment or HEDIS chart review, retrieval methods, a table of documents needed for physicians and hospitals"
+JUNK_RECORD_REQUEST,chart review letter continuation page,60,"only the end of such a letter: confidentiality under HIPAA, participation agreement, medical records provided are true and accurate copies, contact numbers"
+JUNK_RECORD_REQUEST,chase sheet,70,"boxed fields: project name, member first and last name, DOB, chart id, health plan, required DOS; fax header line"
+JUNK_RECORD_REQUEST,signature log request,50,"To Whom It May Concern letter asking the practice to complete a provider signature log with NPI, full name, credential, legal signature, signature variations; sample table"
+JUNK_RECORD_REQUEST,request template with placeholders,30,"a medical record request whose fields were never filled in: {{Location_Name}}, {{CHART_MEMBER_DOB}} and similar"
+KEEP,short note under an EMR header,80,"EMR header with patient, DOB, encounter, then only two to five lines of real content: an allergy, a problem with ICD-10 code, a med with dose, a plan line, or a signed attestation"
