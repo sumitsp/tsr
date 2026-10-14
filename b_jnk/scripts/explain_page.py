@@ -52,11 +52,22 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("page_id", nargs="?", help="<folder>/<image>, as in annotated_pages.jsonl")
     ap.add_argument("--text-file")
+    ap.add_argument("--txt", help="a chart's Tesseract txt (<folder>_prelim.txt); give the image name as page_id, e.g. 42.png")
     args = ap.parse_args()
     cfg = infer._load_cfg(Path(infer.CONFIG_PATH))
 
     label = None
-    if args.text_file:
+    if args.txt:
+        from src.preprocessing.tesseract_txt import split_pages
+
+        want = Path((args.page_id or "").replace("\\", "/")).name.casefold()
+        pages = split_pages(Path(args.txt).read_text(encoding="utf-8", errors="replace"))
+        match = [t for name, t in pages if Path(name).name.casefold() == want or Path(name).stem.casefold() == Path(want).stem]
+        if not match:
+            print(f"{args.page_id} is not in {args.txt}. Pages there: {', '.join(n for n, _ in pages[:15])} ...")
+            return 1
+        text = match[0]
+    elif args.text_file:
         text = Path(args.text_file).read_text(encoding="utf-8", errors="replace")
     else:
         path = ROOT / cfg["bert"].get("annotated_jsonl", "data/raw/annotated_pages.jsonl")
@@ -72,7 +83,10 @@ def main() -> int:
         text, label = row["text"], row["label"]
 
     print(f"training label: {label or '(not given)'}")
-    print(f"text ({len(text.split())} words): {' '.join(text.split())[:300]}")
+    print(f"text ({len(text.split())} words), exactly as OCR read it:")
+    print("-" * 60)
+    print(text)
+    print("-" * 60)
 
     print("\nword rules:")
     if analyze_protocol(text).retain_clinical_image:
