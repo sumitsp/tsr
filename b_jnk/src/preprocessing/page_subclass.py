@@ -620,6 +620,34 @@ def placeholder_page_reason(text: str) -> str | None:
     return "placeholder_page"
 
 
+# Section labels of the C-CDA document header (the "Document Information" block every EMR
+# prints when it exports a continuity-of-care document).
+CCDA_LABEL_RE = re.compile(
+    r"document\s+information|custodian(?:\s+organization)?|legal\s+authenticator|service\s+providers?"
+    r"|document\s+coverage\s+dates?|encounter\s+providers?|information\s+recipients?|data\s+enterer"
+    r"|documentation\s+of|\bauthor(?:s|ing\s+device)?\s*:?\s*$|\binformants?\b|\bauthenticators?\b",
+    re.I | re.M,
+)
+CCDA_MIN_LABELS = 2
+PROSE_LINE_RE = re.compile(r"(?:(?<![A-Za-z@.])[a-z]{3,}(?![A-Za-z@])[^\n]*){4}")
+
+
+def metadata_page_reason(text: str) -> str | None:
+    """Only the document header of an exported record: providers, custodian, authenticator,
+    their NPIs, phones, addresses and specialties. No clinical lines, values, codes or prose."""
+    from src.preprocessing.protocol import CLINICAL_VALUE_RE
+
+    labels = {re.sub(r"\W+", " ", m.group(0).lower()).strip() for m in CCDA_LABEL_RE.finditer(text or "")}
+    if len(labels) < CCDA_MIN_LABELS:
+        return None
+    if CLINICAL_VALUE_RE.search(text) or ICD_CODE_RE.search(text) or len(clinical_words(text)) > 2:
+        return None
+    for line in (text or "").splitlines():
+        if PROSE_LINE_RE.search(re.sub(r"\S+@\S+|https?://\S+", " ", line)):
+            return None  # a sentence: content, not a contact block
+    return "document_metadata"
+
+
 def contents_page_reason(text: str) -> str | None:
     """A table of contents or index: 3+ lines that are only a label with a date or a page
     range; everything else is header, short labels, or headings. No sentences, no values."""
@@ -743,4 +771,6 @@ def admin_page_reason(text: str) -> tuple[str, str] | None:
         return "JUNK_OTHERS", "contents_page"
     if placeholder_page_reason(text):
         return "JUNK_OTHERS", "placeholder_page"
+    if metadata_page_reason(text):
+        return "JUNK_OTHERS", "document_metadata"
     return None
