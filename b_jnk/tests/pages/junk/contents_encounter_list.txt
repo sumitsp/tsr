@@ -1,0 +1,29 @@
+NextGen Patient Record
+Name: Davis Anthony
+DOB: 04/26/1986
+CONTENTS
+Encounter: 4/14/2026 9:15:00 AM
+TRI_Full Exam
+Encounter: 2/25/2026 9:15:00 AM
+TRI_Office Procedure
+Encounter: 1/21/2026 9:30:00 AM
+TRI_Full Exam
+TRI_Office Procedure
+Encounter: 12/17/2025 9:30:00 AM
+TRI_Full Exam
+Encounter: 11/12/2025 8:45:00 AM
+TRI_Full Exam
+Encounter: 10/8/2025 9:15:00 AM
+TRI_Full Exam
+Encounter: 9/3/2025 9:15:00 AM
+TRI_Full Exam
+Encounter: 7/28/2025 8:15:00 AM
+TRI_Full Exam
+Encounter: 6/23/2025 8:15:00 AM
+TRI_Full Exam
+Encounter: 5/19/2025 8:45:00 AM
+TRI_Full Exam
+Encounter: 5/5/2025 8:30:00 AM
+TRI_Full Exam
+TRI_OCT
+Encounter: 2/18/2025 9:30:00 AM

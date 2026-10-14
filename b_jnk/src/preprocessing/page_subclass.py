@@ -573,6 +573,58 @@ def content_lines(text: str) -> list[str]:
     return out
 
 
+LIST_ENTRY_RE = re.compile(
+    r"^\W*[A-Za-z][A-Za-z0-9 /&()_.'-]{1,40}?:?\s+(?:"
+    r"\d{1,2}[/-]\d{1,2}[/-]\d{2,4}(?:\s+\d{1,2}:\d{2}(?::\d{2})?\s*(?:[AP]M)?)?"  # label + date[time]
+    r"|\.{0,40}\s*(?:pages?\s*)?\d+\s*(?:to|-|thru)\s*\d+"  # label + page range
+    r")\W*$",
+    re.I,
+)
+STOP_LOWER = {"and", "of", "the", "for", "to", "in", "on", "by", "with", "or", "a", "an", "at"}
+
+
+def is_heading_row(line: str) -> bool:
+    """A title or column-heading row: no digits, every word capitalised (small words aside)."""
+    words = re.findall(r"[A-Za-z][A-Za-z'&/-]*", line)
+    if not words or re.search(r"\d", line):
+        return False
+    return all(w[0].isupper() or w.lower() in STOP_LOWER for w in words)
+
+
+def contents_page_reason(text: str) -> str | None:
+    """A table of contents or index: 3+ lines that are only a label with a date or a page
+    range; everything else is header, short labels, or headings. No sentences, no values."""
+    from src.preprocessing.protocol import CLINICAL_VALUE_RE
+
+    if not (text or "").strip() or CLINICAL_VALUE_RE.search(text):
+        return None
+    entries = 0
+    for line in (text or "").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        if LIST_ENTRY_RE.match(line) and not HEADER_LABEL_RE.search(line) and not re.search(
+            r"phone|mobile|cell|fax|tel\b|e-?mail|code|ssn", line, re.I
+        ):
+            rng = re.search(r"(\d+)\s*(?:to|-|thru)\s*(\d+)\W*$", line, re.I)
+            if rng and not re.search(r"\d{1,2}[/-]\d{1,2}[/-]\d{2,4}", line) and int(rng.group(1)) > int(rng.group(2)):
+                return None  # a phone number or code, not a page range
+            entries += 1
+            continue
+        tokens = line.split()
+        lower = re.findall(r"(?<![A-Za-z])[a-z]{3,}", line)
+        if FURNITURE_RE.search(line) or HEADER_LABEL_RE.search(line) or ADDRESS_RE.search(line):
+            continue
+        if len(tokens) <= 4 and len(lower) <= 1:
+            continue  # a short label: "CONTENTS", "TRI_Full Exam", "Page(s)"
+        if is_heading_row(line):
+            continue
+        if re.match(r"^\W*note\s*:", line, re.I) and len(tokens) <= 30:
+            continue  # "Note: There may be certain notes which are not made available ..."
+        return None
+    return "contents_page" if entries >= 3 else None
+
+
 def header_only_reason(text: str) -> str | None:
     """A page with a header, a section title, or a footer, and no body under it: at most two
     short title lines, no signature or provider, no clinical values or codes."""
@@ -583,6 +635,10 @@ def header_only_reason(text: str) -> str | None:
     if CLINICAL_VALUE_RE.search(text) or ICD_CODE_RE.search(text) or DATA_PAGE_TITLE_RE.search(text):
         return None
     lines = content_lines(text)
+    # Column headings with no rows under them ("Medication Order  MAR Action  Dose  Rate").
+    last = lines[-1] if lines else ""
+    if is_heading_row(last) and len(last.split()) >= 3 and not re.search(r"[:=<>#*%$]", last):
+        lines = lines[:-1]
     if len(lines) > HEADER_ONLY_MAX_LINES:
         return None
     if any(len(line.split()) > HEADER_ONLY_MAX_LINE_WORDS or SIGNATURE_LINE_RE.search(line) for line in lines):
@@ -654,4 +710,6 @@ def admin_page_reason(text: str) -> tuple[str, str] | None:
         return found
     if header_only_reason(text):
         return "JUNK_OTHERS", "header_only"
+    if contents_page_reason(text):
+        return "JUNK_OTHERS", "contents_page"
     return None
