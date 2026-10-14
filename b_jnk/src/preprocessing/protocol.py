@@ -210,6 +210,14 @@ CLINICAL_VALUE_RE = re.compile(
     re.I,
 )
 CLINICAL_VALUES_MIN = 3
+# A lab report page: lab context words, and a measured value with decimals. Works when OCR
+# misreads or drops the reference range.
+LAB_CONTEXT_RE = re.compile(
+    r"collect(?:ion|ed)\s*(?:date|time|d/t)|specimen|reference\s*(?:range|interval|value)|\bref\s*range"
+    r"|result(?:ed)?\s*(?:date|value|status)|\bresult\b[^\n]{0,30}\bflag|\bunits?\b[^\n]{0,30}\b(?:range|ref)",
+    re.I,
+)
+MEASURED_VALUE_RE = re.compile(r"(?<![\d/:.,-])\d{1,4}[.,]\d{1,3}(?![\d/:.,-])")
 # One lab result with its reference range is enough: "30.70 (>=20.00)", "18  4 - 76 ng/L".
 LAB_RESULT_RE = re.compile(
     r"\d+(?:\.\d+)?\s*[HL]?\s*\(\s*[<>]=?\s*\d+(?:\.\d+)?\s*\)"
@@ -332,7 +340,7 @@ def always_keep_tag(text: str) -> str | None:
         and CREDENTIAL_RE.search(text)
     ):
         return "KEEP_SIGNATURE_PAGE"
-    if LAB_RESULT_RE.search(text):
+    if LAB_RESULT_RE.search(text) or (LAB_CONTEXT_RE.search(text) and MEASURED_VALUE_RE.search(text)):
         return "KEEP_LAB_RESULT"
     values = {" ".join(m.group(0).lower().split())[:25] for m in CLINICAL_VALUE_RE.finditer(text)}
     if len(values) >= CLINICAL_VALUES_MIN:
