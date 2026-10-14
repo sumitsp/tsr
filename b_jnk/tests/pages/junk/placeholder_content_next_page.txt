@@ -1,0 +1,16 @@
+REPORT REQUEST ID: 231702175
+Carondelet Health Network
+Cardiovascular Procedures
+PROCEDURE   ACCESSION   EXAM DATE/TIME   CARDIOLOGIST   STATUS
+ED EKG 12 Lead-CernerCV   CV-25-0011473   3/26/2025 11:26 MST   DAKKAK ,MELISSA   Auth (Verified)
+(3/29/2025 15:42 MST)
+*** Cardiovascular Content on Following Page ***
+Carondelet Health Network   Bennett Clara L
+St. Mary's Hospital   FIN:351778683   MRN: 200672015
+1601 W. St. Mary's Road   SEX: Male   DOB: 06/25/1961   AGE: 71 years
+Tucson, AZ 85745-   LOCATION: CSM-ED Emergency   RM/BED:
+520-872-1087   ADMITTING: FLO MD,FREDERICK J   ADMIT: 3/26/2025
+PT TYPE: Emergency   ATTENDING: FLO MD,FREDERICK J   DISCH: 3/26/2025
+PRINTED:3/5/2026 10:50 MST   PCP: NO ,PCP   Cons: n/a
+PRINTED BY: SYSTEM   Page 1 of 2
+Page 35 of 36

@@ -591,6 +591,28 @@ def is_heading_row(line: str) -> bool:
     return all(w[0].isupper() or w.lower() in STOP_LOWER for w in words)
 
 
+# A page that only points to where its content is.
+POINTER_RE = re.compile(
+    r"(?:content|report|results?|document|text|note|images?)s?\s+(?:is\s+|are\s+)?(?:on|follows?\s+on|continued\s+on)\s+"
+    r"(?:the\s+)?(?:following|next|subsequent)\s+pages?"
+    r"|see\s+(?:the\s+)?(?:following|next|attached)\s+pages?"
+    r"|(?:report|results?|content)\s+to\s+follow",
+    re.I,
+)
+POINTER_MAX_PROSE_WORDS = 12
+
+
+def placeholder_page_reason(text: str) -> str | None:
+    """A cover that says the content is on the next page ("*** Content on Following Page ***"),
+    with only the header, the report's index fields and the footer around it."""
+    from src.preprocessing.protocol import CLINICAL_VALUE_RE
+
+    if not POINTER_RE.search(text or "") or CLINICAL_VALUE_RE.search(text) or ICD_CODE_RE.search(text):
+        return None
+    prose = body_words(POINTER_RE.sub(" ", text))
+    return "placeholder_page" if len(prose) <= POINTER_MAX_PROSE_WORDS else None
+
+
 def contents_page_reason(text: str) -> str | None:
     """A table of contents or index: 3+ lines that are only a label with a date or a page
     range; everything else is header, short labels, or headings. No sentences, no values."""
@@ -712,4 +734,6 @@ def admin_page_reason(text: str) -> tuple[str, str] | None:
         return "JUNK_OTHERS", "header_only"
     if contents_page_reason(text):
         return "JUNK_OTHERS", "contents_page"
+    if placeholder_page_reason(text):
+        return "JUNK_OTHERS", "placeholder_page"
     return None
