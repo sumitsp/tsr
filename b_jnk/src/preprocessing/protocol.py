@@ -174,9 +174,12 @@ ALWAYS_KEEP_PATTERNS: dict[str, tuple[str, ...]] = {
         r"word\s+recall",
     ),
     # A clinician's sign-off, at any page length.
+    # OCR of faint print misspells these ("Electronicaily", "MID", "Sign oft stafus").
     "KEEP_SIGNATURE_PAGE": (
-        r"signed\s+(?:electronically\s+)?by\s*:?\s*[^\n]{0,60}?\b(?:MD|M\.D\.|DO|D\.O\.|NP|PA-C|OD|DPM|DNP|APRN|FNP)\b",
-        r"sign[\s-]?off\s+status",
+        r"sign\w{0,3}\s+(?:e\w{0,4}ctron\w*\s+)?by\s*:?\s*[^\n]{0,60}?\b(?-i:M\.?\s?D\.?|MID|D\.?O\.?|N\.?P|PA-?C|O\.?D|DPM|DNP|APRN|FNP)(?![A-Za-z])",
+        r"\bsign\W{0,2}o[ft]{1,3}\W{0,2}sta\w*",
+        r"(?:progress|office|visit|consult\w*|clinic|telephone|procedure|h&p|follow[\s-]?up)\s*note\w*\s*:?\s*"
+        r"[A-Za-z][A-Za-z .,'-]{2,40}?,?[ \t]+(?-i:M\.?\s?D\.?|MID|D\.?O\.?|N\.?P|PA-?C|O\.?D|DPM|DNP|APRN|FNP)(?![A-Za-z])",
     ),
     "KEEP_AFTER_VISIT_SUMMARY": (
         r"after\s+visit\s+summary",
