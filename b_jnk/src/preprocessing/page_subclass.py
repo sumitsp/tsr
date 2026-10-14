@@ -525,7 +525,23 @@ SIGNATURE_LINE_RE = re.compile(
     r"|\b(?:MD|M\.D\.|DO|D\.O\.|NP|PA-C|PA|OD|DPM|RN|LPN|PT|DPT|DNP|APRN|FNP)\b|physician\s+assistant|\blicense\s*#",
 )
 HEADER_ONLY_MAX_LINES = 2
+# A line that only says a section is empty: "No of Injections 0", "No results found",
+# "None recorded". ("No known allergies" is content and does not match.)
+EMPTY_SECTION_RE = re.compile(
+    r"^\W*(?:no\.?\s+of\s+[a-z ]{3,30}?\s*:?\s*0"
+    r"|no\s+(?:results?|records?|data|entries|documents?|items?|orders?|injections?|visits?)\s+"
+    r"(?:found|available|on\s+file|recorded|to\s+display)"
+    r"|none\s+(?:recorded|on\s+file|found|documented|available))\W*$",
+    re.I,
+)
 HEADER_ONLY_MAX_LINE_WORDS = 6
+WORD_SHAPE_RE = re.compile(r"^(?=[A-Za-z]*[aeiouyAEIOUY])(?![A-Za-z]*([A-Za-z])\1\1)[A-Za-z]{4,}$")
+
+
+def is_ocr_noise(line: str) -> bool:
+    """Faint print or specks read as letters: no token looks like a word of 4+ letters
+    (has a vowel, no letter three times in a row)."""
+    return not any(WORD_SHAPE_RE.match(t.strip(".,;:()[]'\"")) for t in line.split())
 
 
 def content_lines(text: str) -> list[str]:
@@ -549,6 +565,8 @@ def content_lines(text: str) -> list[str]:
             continue  # a one-line legend such as "*=Abnormal C=Critical L=Low"
         if all(w.lower() in HEADER_VOCAB for w in words):
             continue  # a column-heading row
+        if EMPTY_SECTION_RE.match(line) or is_ocr_noise(line):
+            continue
         if n == 0 and len(tokens) <= 12 and not re.search(r"signed|[a-z]{3,}\s+[a-z]{3,}", line):
             continue  # letterhead: a name or title, not a sentence
         out.append(line)
@@ -568,6 +586,9 @@ def header_only_reason(text: str) -> str | None:
     if len(lines) > HEADER_ONLY_MAX_LINES:
         return None
     if any(len(line.split()) > HEADER_ONLY_MAX_LINE_WORDS or SIGNATURE_LINE_RE.search(line) for line in lines):
+        return None
+    # A line written as a sentence ("No known allergies") is content; titles are capitalised.
+    if any(len(re.findall(r"(?<![A-Za-z])[a-z]{3,}", line)) >= 2 for line in lines):
         return None
     if len(clinical_words(text)) > HEADER_ONLY_MAX_CLINICAL_WORDS:
         return None
@@ -589,6 +610,12 @@ RETRIEVAL_CUES: tuple[tuple[str, float], ...] = (
     (r"medical\s*record\s*request|records?\s*request(?:ed)?\s*:", 1),
     (r"total\s*(?:charts|pages)\b", 1),
     (r"e-?request|request\s*id\b|requestor\s*(?:name|type)", 1),
+    # Cover sheet of a released records packet.
+    (r"confidential\W{1,5}medical\s*records|medical\s*records\W{1,5}confidential", 1),
+    (r"this\s*(?:document|packet|package|fax)\s*(?:contains|may\s*contain)\s*(?:the\s*following\s*)?(?:records|information)", 1),
+    (r"(?:forward|release[ds]?|send(?:ing)?)\s*(?:these|the\s*enclosed|the\s*attached)\s*records", 1),
+    (r"records\s*of\s*the\s*patient", 1),
+    (r"date\s*range\s*:?\s*\d", 0.5),
     (r"\{\{\s*\w+", 1),
     (r"\b\d+\s*to\s*\d+\b[\s\S]{0,80}\b\d+\s*to\s*\d+\b", 1),  # page ranges of an index sheet
     (r"member\s*id|health\s*plan|plan\s*members?", 0.5),
@@ -612,8 +639,11 @@ def retrieval_page_reason(text: str) -> tuple[str, str] | None:
         return None
     if len({" ".join(m.group(0).split()) for m in CLINICAL_VALUE_RE.finditer(text or "")}) >= 2:
         return None
-    index_sheet = re.search(r"total\s+pages", text or "", re.I) and re.search(r"\b\d+\s+to\s+\d+\b", text or "")
-    subtype = "JUNK_COVER_PAGE" if index_sheet else "JUNK_RECORD_REQUEST"
+    # Request letters and pull lists ask for records; index and packet cover sheets only
+    # sit on top of records being sent.
+    asks = re.search(r"chart\s*(?:review|request|retrieval)|retrieval\s*option|please\s*(?:send|provide|submit|upload)"
+                     r"|requested\s*members|required\s*dos|pull\s*list|chase|signature\s*log|\{\{", text or "", re.I)
+    subtype = "JUNK_RECORD_REQUEST" if asks else "JUNK_OTHERS"
     return subtype, "+".join(" ".join(h.split())[:20] for h, _ in hits[:4])
 
 

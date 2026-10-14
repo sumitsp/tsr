@@ -1,0 +1,10 @@
+Riverside Family Health - 200 Oak St, Dayton OH 45402
+Patient: Nguyen, Thomas  DOB 04/09/1960
+Release of Records
+From: Riverside Family Health HIM   Phone (937) 555-0101
+To: Datavant  Fax (877) 555-0199
+Date Range: 01/01/2024 to 12/31/2025
+This document contains the following records of the patient:
+Progress Notes
+Medications
+Problem List
