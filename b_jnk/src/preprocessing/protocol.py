@@ -213,6 +213,16 @@ CLINICAL_VALUE_RE = re.compile(
     re.I,
 )
 CLINICAL_VALUES_MIN = 3
+# A page someone signed: a signature cue, then a person's name on the same line.
+# Instructions that only talk about signatures ("signed by an appropriate provider",
+# "signature log") have no name after the cue.
+SIGNED_BY_RE = re.compile(
+    r"(?i:(?:(?:electronic\w*|digital\w*)\s*|\be-|\bco-?|\bcounter-?)?sign(?:ed|ature)\s*(?:electronically\s*|digitally\s*)?"
+    r"(?:and\s+\w+\s+)?(?:by|:)|(?:physician|provider|clinician|practitioner|attending|doctor)'?s?\s+signature\s*:?"
+    r"|authenticated\s+by|attested\s+by|reviewed\s+and\s+signed\s+by)"
+    r"[ \t:]*(?:Dr\.?\s+)?(?:/s/\s*)?[A-Z][A-Za-z'\-]+,?[ \t]+[A-Z][A-Za-z.'\-]*"
+)
+SIGN_OFF_RE = re.compile(r"\bsign\W{0,2}o[ft]{1,3}\W{0,2}sta\w*", re.I)
 # A lab report page: lab context words, and a measured value with decimals. Works when OCR
 # misreads or drops the reference range.
 LAB_CONTEXT_RE = re.compile(
@@ -332,6 +342,14 @@ def analyze_protocol(ocr_text: str) -> ProtocolHit:
     )
 
 
+def _is_request_paperwork(text: str) -> bool:
+    """Record-request letters and instruction sheets mention signatures without being signed pages."""
+    from src.preprocessing.page_subclass import _candidate_hits, retrieval_page_reason
+
+    hits = _candidate_hits(text)
+    return bool(retrieval_page_reason(text) or hits.get("JUNK_INSTRUCTIONS") or hits.get("JUNK_RECORD_REQUEST"))
+
+
 def always_keep_tag(text: str) -> str | None:
     """The never-junk kind of a page that is not a clinical image, or None."""
     for tag, patterns in _ALWAYS_KEEP.items():
@@ -342,6 +360,8 @@ def always_keep_tag(text: str) -> str | None:
         and SIGNATURE_PAGE_RE.search(text)
         and CREDENTIAL_RE.search(text)
     ):
+        return "KEEP_SIGNATURE_PAGE"
+    if (SIGNED_BY_RE.search(text) or SIGN_OFF_RE.search(text)) and not _is_request_paperwork(text):
         return "KEEP_SIGNATURE_PAGE"
     if LAB_RESULT_RE.search(text) or (LAB_CONTEXT_RE.search(text) and MEASURED_VALUE_RE.search(text)):
         return "KEEP_LAB_RESULT"
