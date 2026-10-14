@@ -466,7 +466,7 @@ relation relationship guarantor partner life
 """.split())
 # Lines that are page furniture whatever words they use.
 FURNITURE_RE = re.compile(
-    r"generated\s+by|printed\s*(?:by|on|at|:)|print\s+date|report\s+(?:date|request)|page\s+\d+\s+of\s+\d+"
+    r"generated\s+(?:by|for)|printed\s*(?:by|on|at|:)|print\s+date|report\s+(?:date|request)|page\s+\d+\s+of\s+\d+"
     r"|electronically\s+signed\s+and\s+reviewed|confidential|https?://|www\.|\S+@\S+",
     re.I,
 )
@@ -519,7 +519,9 @@ HEADER_LABEL_RE = re.compile(
     re.I,
 )
 ADDRESS_RE = re.compile(r"\baddress\s*:?\s*\d|\b[A-Z]{2}[\s-]+\d{5}(?:-\d{4})?\b|^\s*\d{2,6}\s+[A-Za-z]|\(\d{3}\)\s*\d{3}-\d{4}|\b\d{3}[-.]\d{3}[-.]\d{4}\b")
-NAME_DATE_LINE_RE = re.compile(r"^[\W\d]*[A-Za-z'\-]+,?\s+[A-Za-z'\-]+[^\n]{0,40}\d{1,2}/\d{1,2}/\d{2,4}[^\n]{0,30}$")
+# The patient line of a header: a capitalised name (two words), then a date within 40 characters.
+# Table rows ("fecal occult blood test kit 02/11/2021") are lower case and do not match.
+NAME_DATE_LINE_RE = re.compile(r"^[\W\d]*[A-Z][A-Za-z'\-]*,?\s+[A-Z][A-Za-z'\-]*[^\n]{0,40}\d{1,2}/\d{1,2}/\d{2,4}[^\n]{0,30}$")
 SIGNATURE_LINE_RE = re.compile(
     r"(?:electronically\s+)?signed\s+(?:electronically\s+)?by\b(?!.*print)|\bsigned\s+date\s*:|\bauthenticated\s+by"
     r"|\b(?:MD|M\.D\.|DO|D\.O\.|NP|PA-C|PA|OD|DPM|RN|LPN|PT|DPT|DNP|APRN|FNP)\b|physician\s+assistant|\blicense\s*#",
@@ -574,7 +576,7 @@ def content_lines(text: str) -> list[str]:
 
 
 LIST_ENTRY_RE = re.compile(
-    r"^\W*[A-Za-z][A-Za-z0-9 /&()_.'-]{1,40}?:?\s+(?:"
+    r"^\W*(?-i:[A-Z])[A-Za-z0-9 /&()_.'-]{1,40}?:?\s+(?:"
     r"\d{1,2}[/-]\d{1,2}[/-]\d{2,4}(?:\s+\d{1,2}:\d{2}(?::\d{2})?\s*(?:[AP]M)?)?"  # label + date[time]
     r"|\.{0,40}\s*(?:pages?\s*)?\d+\s*(?:to|-|thru)\s*\d+"  # label + page range
     r")\W*$",
@@ -610,7 +612,12 @@ def placeholder_page_reason(text: str) -> str | None:
     if not POINTER_RE.search(text or "") or CLINICAL_VALUE_RE.search(text) or ICD_CODE_RE.search(text):
         return None
     prose = body_words(POINTER_RE.sub(" ", text))
-    return "placeholder_page" if len(prose) <= POINTER_MAX_PROSE_WORDS else None
+    if len(prose) > POINTER_MAX_PROSE_WORDS:
+        return None
+    # Instructions, follow-up, diagnoses, a signer: real content around the pointer.
+    if re.search(r"instructions?\s*:|follow[\s-]*up\s*:|diagnos\w*\s*:|impression\s*:|sign\w*\s+information", text, re.I):
+        return None
+    return "placeholder_page"
 
 
 def contents_page_reason(text: str) -> str | None:

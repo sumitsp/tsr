@@ -1,0 +1,7 @@
+Patient Name: Gordon, Patricia   Date of Birth: 01/12/1992   Sex: F   Encounter Id: 7463035   Encounter Date: August 01, 2025
+Medical Equipment
+DME Orders
+DME   Issue Date   End Date
+fecal occult blood test (FOBT) kit   02/11/2021
+fecal occult blood test (FOBT) kit   11/15/2021
+fecal occult blood test (FOBT) kit   03/24/2022

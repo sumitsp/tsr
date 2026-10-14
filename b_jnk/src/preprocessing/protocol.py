@@ -223,6 +223,19 @@ SIGNED_BY_RE = re.compile(
     r"[ \t:]*(?:Dr\.?\s+)?(?:/s/\s*)?[A-Z][A-Za-z'\-]+,?[ \t]+[A-Z][A-Za-z.'\-]*"
 )
 SIGN_OFF_RE = re.compile(r"\bsign\W{0,2}o[ft]{1,3}\W{0,2}sta\w*", re.I)
+# Any signature block: "Signed", "Physician Signature:", "e-Signature", "Electronically signed",
+# "Sign Information". Kept even with the name on the next line or a blank signature line.
+SIGN_CUE_RE = re.compile(
+    r"(?:\b(?:e|electronic\w*|digital\w*|co|counter)[\s-]*)?\bsign(?:ed|ature)\b|\bsign\s+information\b|\bcosign\w*",
+    re.I,
+)
+# Talk about a signature, not a signature: "missing signature", "Signature required", "signature log".
+NOT_A_SIGNATURE_RE = re.compile(
+    r"(?:missing|no|without|lacks?|lacking|needs?|requires?|unsigned|illegible|obtain|provide)\s+(?:\w+\s+)?signatures?"
+    r"|signatures?\s+(?:required|missing|needed|log|on\s+file|card|variations?|block\s+missing)",
+    re.I,
+)
+ID_CARD_RE = re.compile(r"social\s+security|identification\s+card|driver'?s?\s+licen|\bDL\s+[A-Z]?\d|member\s+id|\brx\s*bin", re.I)
 # A lab report page: lab context words, and a measured value with decimals. Works when OCR
 # misreads or drops the reference range.
 LAB_CONTEXT_RE = re.compile(
@@ -361,7 +374,11 @@ def always_keep_tag(text: str) -> str | None:
         and CREDENTIAL_RE.search(text)
     ):
         return "KEEP_SIGNATURE_PAGE"
-    if (SIGNED_BY_RE.search(text) or SIGN_OFF_RE.search(text)) and not _is_request_paperwork(text):
+    if (
+        (SIGNED_BY_RE.search(text) or SIGN_OFF_RE.search(text) or SIGN_CUE_RE.search(NOT_A_SIGNATURE_RE.sub(" ", text)))
+        and not ID_CARD_RE.search(text)
+        and not _is_request_paperwork(text)
+    ):
         return "KEEP_SIGNATURE_PAGE"
     if LAB_RESULT_RE.search(text) or (LAB_CONTEXT_RE.search(text) and MEASURED_VALUE_RE.search(text)):
         return "KEEP_LAB_RESULT"

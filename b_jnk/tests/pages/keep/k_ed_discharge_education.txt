@@ -1,0 +1,19 @@
+IDIF IDAHO FALLS COMMUNITY HOSPITAL
+Patient Name: Cain, Jacob VIRGINIA
+MRN: 00466171   Admit: 7/28/2025
+FIN: IDIF5100188853   Disch: 7/28/2025
+DOB/Age/Sex: 03/12/1949 72 years Female   Admitting:
+Emergency Documentation
+PATIENT EDUCATION INFORMATION
+Instructions:
+CHEST PAIN, Uncertain Cause
+Follow up:
+With:   Address:   When:
+Idaho Heart Institute   2985 Cortez Ave Idaho Falls, ID 834047554 (208)523-3373   Within 3 to 5 days
+Document Type: ED Discharge Information
+Service Date/Time: 7/28/2025 15:56 MDT
+Result Status: Auth (Verified)
+Document Subject: ED Discharge Information
+Sign Information: Creager,Cambri S as proxy for Creager,Cambri S (7/30/2025 11:07 MDT)
+*** Clinical Documentation Content on Following Page ***
+Report Request ID: 91853713   Page 7 of 90   Print Date/Time: 4/24/2026 Cain, Jacob
