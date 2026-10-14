@@ -162,6 +162,22 @@ ALWAYS_KEEP_PATTERNS: dict[str, tuple[str, ...]] = {
         r"(?:attached|enclosed)\s+(?:visit|office|clinic|consult(?:ation)?)\s+note",
         r"pleasure\s+of\s+seeing",
     ),
+    # Cognitive and screening tests the patient completed.
+    "KEEP_ASSESSMENT": (
+        r"(?:draw|hands\s+of)\s+(?:the\s+)?(?:hours\s+of\s+a\s+)?clock",
+        r"clock\s+draw",
+        r"mini[\s-]?cog",
+        r"\bmmse\b|mini[\s-]mental",
+        r"\bmoca\b|montreal\s+cognitive",
+        r"\bphq[\s-]?[29]\b",
+        r"\bgad[\s-]?7\b",
+        r"word\s+recall",
+    ),
+    # A clinician's sign-off, at any page length.
+    "KEEP_SIGNATURE_PAGE": (
+        r"signed\s+(?:electronically\s+)?by\s*:?\s*[^\n]{0,60}?\b(?:MD|M\.D\.|DO|D\.O\.|NP|PA-C|OD|DPM|DNP|APRN|FNP)\b",
+        r"sign[\s-]?off\s+status",
+    ),
     "KEEP_AFTER_VISIT_SUMMARY": (
         r"after\s+visit\s+summary",
         r"arrive\s+(?:by\s+\d|\d+\s+minutes\s+(?:before|prior|early))",
