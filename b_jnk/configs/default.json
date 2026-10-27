@@ -36,6 +36,7 @@
     "model_dir": "models/bert_page",
     "synthetic_clean": ["synthetic_v2/clean.jsonl"],
     "annotated_jsonl": "data/raw/annotated_pages.jsonl",
+    "correction_jsonl": "data/raw/correction_pages.jsonl",
     "max_length": 512,
     "head_share": 0.75,
     "epochs": 4,
@@ -57,7 +58,8 @@
       "keep_lost_cost": 3.0,
       "epochs": 2,
       "learning_rate": 1e-5,
-      "keep_weight": 3.0
+      "keep_weight": 3.0,
+      "correction_copies": 3
     }
   }
 }

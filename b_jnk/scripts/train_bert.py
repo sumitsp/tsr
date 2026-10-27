@@ -89,9 +89,9 @@ def _norm_text(text: str) -> str:
     return " ".join(text.lower().split())
 
 
-def annotated_examples(cfg: dict) -> list[Example]:
+def annotated_examples(cfg: dict, rel: str | None = None) -> list[Example]:
     """Image labels joined to Tesseract page text. Missing file = none."""
-    rel = cfg["bert"].get("annotated_jsonl") or "data/raw/annotated_pages.jsonl"
+    rel = rel or cfg["bert"].get("annotated_jsonl") or "data/raw/annotated_pages.jsonl"
     path = ROOT / rel
     if not path.is_file():
         return []
@@ -113,6 +113,35 @@ def annotated_examples(cfg: dict) -> list[Example]:
             reason="image_label",
         ))
     return out
+
+
+def correction_examples(cfg: dict) -> list[Example]:
+    """Pages the model got wrong (bert.correction_jsonl, same fields as annotated_pages.jsonl).
+    They always train, never held out, repeated continue.correction_copies times. Missing file = none."""
+    rel = cfg["bert"].get("correction_jsonl") or "data/raw/correction_pages.jsonl"
+    return [Example(e.uid, e.text, e.label, "correction", group=e.group, reason="correction")
+            for e in annotated_examples(cfg, rel)]
+
+
+def with_corrections(train: list[Example], fixes: list[Example], cfg: dict) -> list[Example]:
+    """The balanced set plus every correction page continue.correction_copies times, shuffled."""
+    copies = max(1, int(cfg["bert"].get("continue", {}).get("correction_copies", 3)))
+    out = train + fixes * copies
+    random.Random(cfg["bert"]["seed"]).shuffle(out)
+    return out
+
+
+def correction_report(svc, fixes: list[Example], tag: str) -> int:
+    """Correction pages the model with the rules (as infer.py runs it) gets right."""
+    right = 0
+    for e in fixes:
+        r = svc.predict_one(e.uid, e.text)
+        ok = (r.flag == "KEEP") == (e.label == "KEEP")
+        right += ok
+        if not ok:
+            print(f"  [{tag}] still wrong: {e.uid} want {e.label}, got {r.flag} {r.subclass or ''}", flush=True)
+    print(f"[{tag}] correction pages right: {right}/{len(fixes)}", flush=True)
+    return right
 
 
 def new_annotated(annotated: list[Example], already: list[Example]) -> tuple[list[Example], int, int]:
@@ -455,8 +484,9 @@ def show_balance(cfg: dict) -> int:
     synth = synthetic_examples(cfg) if cc.get("use_synthetic", True) else []
     real = real_examples(cfg)
     tagged, dupes, conflicts = new_annotated(annotated_examples(cfg), synth + real)
+    fixes, _, _ = new_annotated(correction_examples(cfg), synth + real + tagged)
     train_tagged, held = split_by_chart(tagged, float(cc.get("holdout_share", 0.2)), bc["seed"])
-    train = balance(train_tagged + real, synth, cfg, bc["seed"])
+    train = with_corrections(balance(train_tagged + real, synth, cfg, bc["seed"]), fixes, cfg)
 
     def table(title: str, pages: list[Example]) -> None:
         counts = collections.Counter(e.label for e in pages)
@@ -467,6 +497,7 @@ def show_balance(cfg: dict) -> int:
 
     table("your tagged pages", tagged)
     table("held out for the check (not trained on)", held)
+    table(f"correction pages (always train, x{cc.get('correction_copies', 3)})", fixes)
     table("tagged + real pages that train", train_tagged + real)
     table("balanced training set", train)
     by_source = collections.Counter((e.label, e.source == "synthetic") for e in train)
@@ -484,7 +515,9 @@ def continue_saved_model(cfg: dict, device, epochs: int, force: bool = False) ->
     20% of the tagged charts are held out. The old and the new model are both run on them
     (with the word rules, as infer.py runs them) and on tests/pages. The new model replaces
     models/bert_page only when it loses no more KEEP pages, catches at least as much junk,
-    and fails no test page. Otherwise it is saved as models/bert_page.candidate.
+    and fails no test page (with equal held-out mistakes, it must get more correction pages right).
+    Otherwise it is saved as models/bert_page.candidate.
+    Correction pages (data/raw/correction_pages.jsonl) always train and are never held out.
     """
     import torch  # noqa: F401
     from transformers import AutoModelForSequenceClassification, AutoTokenizer
@@ -500,15 +533,18 @@ def continue_saved_model(cfg: dict, device, epochs: int, force: bool = False) ->
     synth = synthetic_examples(cfg)
     real = real_examples(cfg)
     tagged, dupes, conflicts = new_annotated(annotated_examples(cfg), synth + real)
-    if not tagged:
+    fixes, fix_dupes, fix_conflicts = new_annotated(correction_examples(cfg), synth + real + tagged)
+    if not tagged and not fixes:
         raise SystemExit(f"No tagged pages in {ROOT / bc.get('annotated_jsonl', 'data/raw/annotated_pages.jsonl')}")
     train_tagged, held = split_by_chart(tagged, float(cc.get("holdout_share", 0.2)), bc["seed"])
-    train = balance(train_tagged + real, synth, cfg, bc["seed"])
+    train = with_corrections(balance(train_tagged + real, synth, cfg, bc["seed"]), fixes, cfg)
     print(f"tagged pages: {len(tagged)} (skipped {dupes} already in training, {conflicts} conflicting); "
           f"held out {len(held)} from {len({e.group for e in held})} charts", flush=True)
+    print(f"correction pages: {len(fixes)} x{cc.get('correction_copies', 3)} "
+          f"(skipped {fix_dupes} already in training, {fix_conflicts} conflicting)", flush=True)
     print(f"balanced training set: {len(train)} {dict(collections.Counter(e.label for e in train))}", flush=True)
 
-    def judge(model, tok, tag: str) -> tuple[dict, list[str]]:
+    def judge(model, tok, tag: str) -> tuple[dict, list[str], int]:
         summary, _ = evaluate(model, tok, device, held, cfg, tag) if held else ({}, [])
         if summary:
             print_summary(tag, summary)
@@ -519,11 +555,11 @@ def continue_saved_model(cfg: dict, device, epochs: int, force: bool = False) ->
                                     route_short_pages=not bc.get("decide_short_pages", False))
         failed = check(svc, verbose=False)
         print(f"[{tag}] test pages failed: {len(failed)} {failed}", flush=True)
-        return summary, failed
+        return summary, failed, correction_report(svc, fixes, tag) if fixes else 0
 
     old_tok = AutoTokenizer.from_pretrained(str(model_dir))
     old_model = AutoModelForSequenceClassification.from_pretrained(str(model_dir)).to(device).eval()
-    old, old_failed = judge(old_model, old_tok, "current model")
+    old, old_failed, old_fixed = judge(old_model, old_tok, "current model")
     free(old_model)
 
     epochs = min(epochs, int(cc.get("epochs", 2)))
@@ -533,7 +569,7 @@ def continue_saved_model(cfg: dict, device, epochs: int, force: bool = False) ->
         keep_weight=float(cc.get("keep_weight", 1.5)),
         class_weights=class_weights_for(train, cfg),
     )
-    new, new_failed = judge(model, tok, "new model")
+    new, new_failed, new_fixed = judge(model, tok, "new model")
 
     # A clinical page junked loses evidence; a junk page kept only costs review time.
     keep_cost = float(cc.get("keep_lost_cost", 3.0))
@@ -544,7 +580,7 @@ def continue_saved_model(cfg: dict, device, epochs: int, force: bool = False) ->
     better = (
         not new_failed
         and new.get("keep_pages_lost", 0) <= old.get("keep_pages_lost", 0)
-        and cost(new) < cost(old)
+        and (cost(new) < cost(old) or (cost(new) == cost(old) and new_fixed > old_fixed))
     )
     print(f"\nmistake cost (KEEP lost x {keep_cost:g} + junk missed): old {cost(old):g}, new {cost(new):g}")
     meta = json.loads((model_dir / "bjnk_meta.json").read_text(encoding="utf-8"))
@@ -553,6 +589,7 @@ def continue_saved_model(cfg: dict, device, epochs: int, force: bool = False) ->
         "continued_from": str(model_dir),
         "continue_epochs": epochs,
         "continue_train_labels": dict(collections.Counter(e.label for e in train)),
+        "continue_corrections": {"pages": len(fixes), "right": (old_fixed, new_fixed)},
         "continue_heldout": {k: (old.get(k), new.get(k)) for k in ("pages", "keep_pages_lost", "junk_or_blank_caught")},
     })
     out_dir = model_dir if (better or force) else model_dir.with_name(model_dir.name + ".candidate")
@@ -566,7 +603,8 @@ def continue_saved_model(cfg: dict, device, epochs: int, force: bool = False) ->
     print("\nheld-out charts, old -> new: "
           f"KEEP lost {old.get('keep_pages_lost')} -> {new.get('keep_pages_lost')}, "
           f"junk/blank caught {old.get('junk_or_blank_caught')} -> {new.get('junk_or_blank_caught')} "
-          f"of {new.get('junk_or_blank_pages')}; test pages failed {len(old_failed)} -> {len(new_failed)}")
+          f"of {new.get('junk_or_blank_pages')}; test pages failed {len(old_failed)} -> {len(new_failed)}; "
+          f"correction pages right {old_fixed} -> {new_fixed} of {len(fixes)}")
     if out_dir == model_dir:
         print(f"Saved -> {out_dir}" + ("" if better else "  (--force: saved although not better)"))
     else:
