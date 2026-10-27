@@ -59,7 +59,10 @@
       "epochs": 2,
       "learning_rate": 1e-5,
       "keep_weight": 3.0,
-      "correction_copies": 3
+      "correction_copies": 3,
+      "protect_copies": 2,
+      "obvious_min_conf": 0.9,
+      "obvious_keep_lost_max": 0
     }
   }
 }

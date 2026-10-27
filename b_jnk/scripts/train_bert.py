@@ -42,6 +42,7 @@ from src.models.bert_classifier import (  # noqa: E402
 from src.models.decision import DecisionConfig  # noqa: E402
 from src.preprocessing.dataset import filter_training_rows, load_jsonl, synthetic_paths  # noqa: E402
 from src.preprocessing.page_subclass import JUNK_SUBTYPES, assign_junk_subtype  # noqa: E402
+from src.preprocessing.protocol import analyze_protocol  # noqa: E402
 from src.preprocessing.taxonomy import to_flag  # noqa: E402
 
 LABEL_INDEX = {lab: i for i, lab in enumerate(BERT_LABELS)}
@@ -145,6 +146,35 @@ def with_corrections(train: list[Example], fixes: list[Example], cfg: dict) -> l
     out = train + fixes * copies
     random.Random(cfg["bert"]["seed"]).shuffle(out)
     return out
+
+
+def protected(e: Example) -> bool:
+    """A KEEP page of a kind the word rules always keep: patient forms and consents,
+    clinician letters, clinical images, ID / insurance cards and demographics."""
+    if e.label != "KEEP":
+        return False
+    hit = analyze_protocol(e.text)
+    return hit.retain_clinical_image or hit.retain_demographic
+
+
+def with_protected(train: list[Example], cfg: dict) -> tuple[list[Example], int]:
+    """Real protected KEEP pages appear continue.protect_copies times, so the model holds on to them."""
+    copies = max(1, int(cfg["bert"].get("continue", {}).get("protect_copies", 2)))
+    pages = [e for e in train if e.source != "synthetic" and protected(e)]
+    return train + pages * (copies - 1), len(pages)
+
+
+def obvious_lost(pages: list[Example], old_proba, new_proba, min_conf: float) -> tuple[list[Example], list[Example]]:
+    """Pages the old model got right with at least min_conf, which the new model gets wrong
+    (BERT alone, KEEP vs not KEEP). Returns (KEEP pages lost, junk / blank pages lost)."""
+    keep_lost, junk_lost = [], []
+    for e, old, new in zip(pages, old_proba, new_proba):
+        want = flag_of(e.label)
+        if flag_of(BERT_LABELS[int(old.argmax())]) != want or float(old.max()) < min_conf:
+            continue
+        if flag_of(BERT_LABELS[int(new.argmax())]) != want:
+            (keep_lost if want == "KEEP" else junk_lost).append(e)
+    return keep_lost, junk_lost
 
 
 def correction_report(svc, fixes: list[Example], tag: str) -> int:
@@ -502,7 +532,8 @@ def show_balance(cfg: dict) -> int:
     tagged, fixes, note = tagged_and_corrections(cfg, synth + real)
     print(note)
     train_tagged, held = split_by_chart(tagged, float(cc.get("holdout_share", 0.2)), bc["seed"])
-    train = with_corrections(balance(train_tagged + real, synth, cfg, bc["seed"]), fixes, cfg)
+    train, n_protected = with_protected(balance(train_tagged + real, synth, cfg, bc["seed"]), cfg)
+    train = with_corrections(train, fixes, cfg)
 
     def table(title: str, pages: list[Example]) -> None:
         counts = collections.Counter(e.label for e in pages)
@@ -520,7 +551,9 @@ def show_balance(cfg: dict) -> int:
     print("\n  per label: real / synthetic in the balanced set")
     for label in BERT_LABELS:
         print(f"  {label:22s} {by_source.get((label, False), 0):6d} / {by_source.get((label, True), 0)}")
-    print(f"\n  loss weights: {class_weights_for(train, cfg)}  KEEP: {cc.get('keep_weight', 1.5)}")
+    print(f"\n  protected KEEP pages (forms, consents, letters, cards, clinical images): "
+          f"{n_protected}, each x{cc.get('protect_copies', 2)}")
+    print(f"  loss weights: {class_weights_for(train, cfg)}  KEEP: {cc.get('keep_weight', 1.5)}")
     print(f"\nsettings: {cc}")
     return 0
 
@@ -532,6 +565,10 @@ def continue_saved_model(cfg: dict, device, epochs: int, force: bool = False) ->
     (with the word rules, as infer.py runs them) and on tests/pages. The new model replaces
     models/bert_page only when it loses no more KEEP pages, catches at least as much junk,
     and fails no test page (with equal held-out mistakes, it must get more correction pages right).
+    It must also turn no obvious KEEP page into junk: a tagged page the old model kept with
+    confidence >= continue.obvious_min_conf (at most continue.obvious_keep_lost_max may flip).
+    Protected KEEP pages (forms, consents, letters, cards, clinical images) train
+    continue.protect_copies times.
     Otherwise it is saved as models/bert_page.candidate.
     Correction pages (data/raw/correction_pages.jsonl) always train and are never held out.
     """
@@ -552,11 +589,14 @@ def continue_saved_model(cfg: dict, device, epochs: int, force: bool = False) ->
     if not tagged and not fixes:
         raise SystemExit(f"No tagged pages in {ROOT / bc.get('annotated_jsonl', 'data/raw/annotated_pages.jsonl')}")
     train_tagged, held = split_by_chart(tagged, float(cc.get("holdout_share", 0.2)), bc["seed"])
-    train = with_corrections(balance(train_tagged + real, synth, cfg, bc["seed"]), fixes, cfg)
+    train, n_protected = with_protected(balance(train_tagged + real, synth, cfg, bc["seed"]), cfg)
+    train = with_corrections(train, fixes, cfg)
+    print(f"protected KEEP pages (forms, consents, letters, cards, clinical images): "
+          f"{n_protected}, each x{cc.get('protect_copies', 2)}", flush=True)
     print(f"{note}; held out {len(held)} from {len({e.group for e in held})} charts", flush=True)
     print(f"balanced training set: {len(train)} {dict(collections.Counter(e.label for e in train))}", flush=True)
 
-    def judge(model, tok, tag: str) -> tuple[dict, list[str], int]:
+    def judge(model, tok, tag: str):
         summary, _ = evaluate(model, tok, device, held, cfg, tag) if held else ({}, [])
         if summary:
             print_summary(tag, summary)
@@ -567,11 +607,13 @@ def continue_saved_model(cfg: dict, device, epochs: int, force: bool = False) ->
                                     route_short_pages=not bc.get("decide_short_pages", False))
         failed = check(svc, verbose=False)
         print(f"[{tag}] test pages failed: {len(failed)} {failed}", flush=True)
-        return summary, failed, correction_report(svc, fixes, tag) if fixes else 0
+        print(f"[{tag}] reading all {len(tagged)} tagged pages for the obvious-page check ...", flush=True)
+        proba = clf.predict_proba([e.text for e in tagged])
+        return summary, failed, correction_report(svc, fixes, tag) if fixes else 0, proba
 
     old_tok = AutoTokenizer.from_pretrained(str(model_dir))
     old_model = AutoModelForSequenceClassification.from_pretrained(str(model_dir)).to(device).eval()
-    old, old_failed, old_fixed = judge(old_model, old_tok, "current model")
+    old, old_failed, old_fixed, old_proba = judge(old_model, old_tok, "current model")
     free(old_model)
 
     epochs = min(epochs, int(cc.get("epochs", 2)))
@@ -581,7 +623,16 @@ def continue_saved_model(cfg: dict, device, epochs: int, force: bool = False) ->
         keep_weight=float(cc.get("keep_weight", 1.5)),
         class_weights=class_weights_for(train, cfg),
     )
-    new, new_failed, new_fixed = judge(model, tok, "new model")
+    new, new_failed, new_fixed, new_proba = judge(model, tok, "new model")
+    # Obvious pages: every tagged page (trained on or held out) the old model got right with
+    # high confidence. The new model must not turn an obvious KEEP page into junk.
+    min_conf = float(cc.get("obvious_min_conf", 0.9))
+    keep_flipped, junk_flipped = obvious_lost(tagged, old_proba, new_proba, min_conf)
+    print(f"\nobvious pages (old model right, conf >= {min_conf:g}) the new model gets wrong: "
+          f"KEEP -> junk {len(keep_flipped)} (protected kinds {sum(protected(e) for e in keep_flipped)}), "
+          f"junk -> KEEP {len(junk_flipped)}")
+    for e in keep_flipped[:15]:
+        print(f"  KEEP page now junk: {e.uid}  {' '.join(e.text.split())[:90]}")
 
     # A clinical page junked loses evidence; a junk page kept only costs review time.
     keep_cost = float(cc.get("keep_lost_cost", 3.0))
@@ -591,6 +642,7 @@ def continue_saved_model(cfg: dict, device, epochs: int, force: bool = False) ->
 
     better = (
         not new_failed
+        and len(keep_flipped) <= int(cc.get("obvious_keep_lost_max", 0))
         and new.get("keep_pages_lost", 0) <= old.get("keep_pages_lost", 0)
         and (cost(new) < cost(old) or (cost(new) == cost(old) and new_fixed > old_fixed))
     )
@@ -601,6 +653,7 @@ def continue_saved_model(cfg: dict, device, epochs: int, force: bool = False) ->
         "continued_from": str(model_dir),
         "continue_epochs": epochs,
         "continue_train_labels": dict(collections.Counter(e.label for e in train)),
+        "continue_obvious_lost": {"keep": len(keep_flipped), "junk": len(junk_flipped), "min_conf": min_conf},
         "continue_corrections": {"pages": len(fixes), "right": (old_fixed, new_fixed)},
         "continue_heldout": {k: (old.get(k), new.get(k)) for k in ("pages", "keep_pages_lost", "junk_or_blank_caught")},
     })
@@ -616,7 +669,8 @@ def continue_saved_model(cfg: dict, device, epochs: int, force: bool = False) ->
           f"KEEP lost {old.get('keep_pages_lost')} -> {new.get('keep_pages_lost')}, "
           f"junk/blank caught {old.get('junk_or_blank_caught')} -> {new.get('junk_or_blank_caught')} "
           f"of {new.get('junk_or_blank_pages')}; test pages failed {len(old_failed)} -> {len(new_failed)}; "
-          f"correction pages right {old_fixed} -> {new_fixed} of {len(fixes)}")
+          f"correction pages right {old_fixed} -> {new_fixed} of {len(fixes)}; "
+          f"obvious KEEP pages turned junk {len(keep_flipped)}")
     if out_dir == model_dir:
         print(f"Saved -> {out_dir}" + ("" if better else "  (--force: saved although not better)"))
     else:
