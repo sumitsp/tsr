@@ -62,7 +62,8 @@
       "correction_copies": 3,
       "protect_copies": 2,
       "obvious_min_conf": 0.9,
-      "obvious_keep_lost_max": 0
+      "obvious_keep_lost_max": 0,
+      "obvious_junk_lost_max": 0
     }
   }
 }
