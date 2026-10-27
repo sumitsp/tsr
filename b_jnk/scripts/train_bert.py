@@ -123,6 +123,22 @@ def correction_examples(cfg: dict) -> list[Example]:
             for e in annotated_examples(cfg, rel)]
 
 
+def tagged_and_corrections(cfg: dict, already: list[Example]) -> tuple[list[Example], list[Example], str]:
+    """Tagged pages and correction pages, each without pages already in training.
+    A correction wins: a tagged page with the same id or text is dropped."""
+    fixes = correction_examples(cfg)
+    ids = {e.uid.casefold() for e in fixes}
+    texts = {_norm_text(e.text) for e in fixes}
+    tagged_all = annotated_examples(cfg)
+    kept = [e for e in tagged_all if e.uid.casefold() not in ids and _norm_text(e.text) not in texts]
+    tagged, dupes, conflicts = new_annotated(kept, already)
+    fixes, fix_dupes, fix_conflicts = new_annotated(fixes, already)
+    note = (f"tagged pages: {len(tagged)} (skipped {dupes} already in training, {conflicts} conflicting, "
+            f"{len(tagged_all) - len(kept)} replaced by a correction); correction pages: {len(fixes)} "
+            f"(skipped {fix_dupes} already in training, {fix_conflicts} conflicting)")
+    return tagged, fixes, note
+
+
 def with_corrections(train: list[Example], fixes: list[Example], cfg: dict) -> list[Example]:
     """The balanced set plus every correction page continue.correction_copies times, shuffled."""
     copies = max(1, int(cfg["bert"].get("continue", {}).get("correction_copies", 3)))
@@ -483,8 +499,8 @@ def show_balance(cfg: dict) -> int:
     cc = bc.get("continue", {})
     synth = synthetic_examples(cfg) if cc.get("use_synthetic", True) else []
     real = real_examples(cfg)
-    tagged, dupes, conflicts = new_annotated(annotated_examples(cfg), synth + real)
-    fixes, _, _ = new_annotated(correction_examples(cfg), synth + real + tagged)
+    tagged, fixes, note = tagged_and_corrections(cfg, synth + real)
+    print(note)
     train_tagged, held = split_by_chart(tagged, float(cc.get("holdout_share", 0.2)), bc["seed"])
     train = with_corrections(balance(train_tagged + real, synth, cfg, bc["seed"]), fixes, cfg)
 
@@ -532,16 +548,12 @@ def continue_saved_model(cfg: dict, device, epochs: int, force: bool = False) ->
         raise SystemExit(f"No saved model at {model_dir}")
     synth = synthetic_examples(cfg)
     real = real_examples(cfg)
-    tagged, dupes, conflicts = new_annotated(annotated_examples(cfg), synth + real)
-    fixes, fix_dupes, fix_conflicts = new_annotated(correction_examples(cfg), synth + real + tagged)
+    tagged, fixes, note = tagged_and_corrections(cfg, synth + real)
     if not tagged and not fixes:
         raise SystemExit(f"No tagged pages in {ROOT / bc.get('annotated_jsonl', 'data/raw/annotated_pages.jsonl')}")
     train_tagged, held = split_by_chart(tagged, float(cc.get("holdout_share", 0.2)), bc["seed"])
     train = with_corrections(balance(train_tagged + real, synth, cfg, bc["seed"]), fixes, cfg)
-    print(f"tagged pages: {len(tagged)} (skipped {dupes} already in training, {conflicts} conflicting); "
-          f"held out {len(held)} from {len({e.group for e in held})} charts", flush=True)
-    print(f"correction pages: {len(fixes)} x{cc.get('correction_copies', 3)} "
-          f"(skipped {fix_dupes} already in training, {fix_conflicts} conflicting)", flush=True)
+    print(f"{note}; held out {len(held)} from {len({e.group for e in held})} charts", flush=True)
     print(f"balanced training set: {len(train)} {dict(collections.Counter(e.label for e in train))}", flush=True)
 
     def judge(model, tok, tag: str) -> tuple[dict, list[str], int]:
