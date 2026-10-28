@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Flag OCR pages like infer.py and compare BLANK / JUNK with a ground truth CSV.
+"""Flag OCR pages like infer.py with two models and compare them with a ground truth CSV.
 
 Ground truth columns: Chart_Name, OriginalSequence, Blank Page, Junk Page (spaces,
 underscores and case in the names do not matter).
@@ -10,16 +10,18 @@ Only charts that are in the ground truth are flagged. Inside those charts a page
 the ground truth does not list counts as KEEP. For txt OCR, only
 <chart>/<chart>_prelim.txt is read (not other txt files in the folder).
 
-The CSV has one row per page that the model or the ground truth calls BLANK or
-JUNK (KEEP pages on both sides are left out):
+Both models (NEW_MODEL_DIR: the latest, OLD_MODEL_DIR: the one saved before it) flag
+every page, with the word rules, as infer.py runs them. The CSV has one row per page
+where the two models give a different flag (KEEP / BLANK / JUNK):
 
-  folder name, image name, model, model subtype, ground truth, result
+  folder name, image name, new model, new subtype, old model, old subtype,
+  ground truth, new result, old result, right
 
-  result: correct     both say the same of BLANK / JUNK
+  result: correct     agrees with the ground truth (KEEP, or the same of BLANK / JUNK)
           wrong type  one says BLANK, the other JUNK
           missed      ground truth BLANK / JUNK, model KEEP
           false flag  model BLANK / JUNK, ground truth KEEP
-          no OCR page ground truth BLANK / JUNK, page not found in the OCR
+  right:  new / old / neither
 
 Edit RUN CONFIG, then:
     python b_jnk/scripts/compare_ground_truth.py
@@ -50,14 +52,19 @@ OCR_DIR = Path(r"C:\Users\sumit.pandey\Desktop\Imaging\extracted_text_tesseract"
 # "json": Docling or Azure Document Intelligence JSON (page n = n.png).
 OCR_FORMAT = "txt"
 GROUND_TRUTH_CSV = Path(r"C:\Users\sumit.pandey\Desktop\Imaging\ground_truth.csv")
-# Empty = ground_truth_comparison.csv next to GROUND_TRUTH_CSV.
+# The latest model (models/bert_page.candidate if it was not saved over bert_page).
+NEW_MODEL_DIR = ROOT / "models" / "bert_page"
+# The model saved before it.
+OLD_MODEL_DIR = ROOT / "models" / "bert_page_1014_backup"
+# Empty = model_comparison.csv next to GROUND_TRUTH_CSV.
 OUT_CSV: Path | None = None
 # How many ground-truth chart folders to run. None or 0 = all of them.
 MAX_FOLDERS: int | None = 100
 # ========================================================================
 
 YES = {"yes", "y", "true", "1", "x"}
-COLUMNS = ["folder name", "image name", "model", "model subtype", "ground truth", "result"]
+COLUMNS = ["folder name", "image name", "new model", "new subtype", "old model", "old subtype",
+           "ground truth", "new result", "old result", "right"]
 
 
 def _key(name: str) -> str:
@@ -149,15 +156,15 @@ def load_pages(folders: list[str]) -> list[dict]:
     return pages
 
 
-def build_service() -> PageClassifierService:
+def build_service(model_dir: Path) -> PageClassifierService:
     cfg = infer._load_cfg(Path(infer.CONFIG_PATH))
-    if not bert_available(infer.BERT_DIR):
-        raise SystemExit(f"BERT model not found: {infer.BERT_DIR}")
+    if not bert_available(model_dir):
+        raise SystemExit(f"BERT model not found: {model_dir}")
     from src.models.bert_classifier import BertPageClassifier
 
-    print(f"Loading BERT model: {infer.BERT_DIR}", flush=True)
+    print(f"Loading BERT model: {model_dir}", flush=True)
     return PageClassifierService(
-        BertPageClassifier.load(infer.BERT_DIR),
+        BertPageClassifier.load(model_dir),
         model_version=cfg["model_version"] + "+bert",
         decision=DecisionConfig(**cfg["decision"]),
         min_dictionary_words=cfg["routing"]["min_dictionary_words"],
@@ -167,7 +174,7 @@ def build_service() -> PageClassifierService:
 
 def result_of(model: str, truth: str) -> str:
     if model == "KEEP":
-        return "missed"
+        return "correct" if truth == "KEEP" else "missed"
     if truth == "KEEP":
         return "false flag"
     return "correct" if model in truth.split("+") else "wrong type"
@@ -176,8 +183,8 @@ def result_of(model: str, truth: str) -> str:
 def main() -> int:
     if not OCR_DIR.is_dir():
         raise SystemExit(f"OCR folder not found: {OCR_DIR}")
-    truth, names = load_ground_truth(GROUND_TRUTH_CSV)
-    out = OUT_CSV or GROUND_TRUTH_CSV.with_name("ground_truth_comparison.csv")
+    truth, _ = load_ground_truth(GROUND_TRUTH_CSV)
+    out = OUT_CSV or GROUND_TRUTH_CSV.with_name("model_comparison.csv")
     folders = selected_charts(truth)
     cap = f"first {MAX_FOLDERS}" if MAX_FOLDERS else "all"
     print(f"Ground truth: {len(truth)} charts  running: {cap} ({len(folders)} folders)", flush=True)
@@ -188,35 +195,31 @@ def main() -> int:
     print(f"{len(pages)} pages in {len(charts_found)} folders "
           f"({len(folders) - len(charts_found)} selected folders have no OCR)", flush=True)
 
-    service = build_service()
+    new_service = build_service(NEW_MODEL_DIR)
+    old_service = build_service(OLD_MODEL_DIR)
     rows: list[dict] = []
-    seen: set[tuple[str, int]] = set()
+    tally = {"new": Counter(), "old": Counter()}
     for i, page in enumerate(pages, start=1):
         folder = chart_of(page["page_id"])
         image = Path(page["page_id"]).name
         number = _page_number(image)
-        r = service.predict_one(page["page_id"], page.get("ocr_text", ""), content_meta=page.get("content_meta"))
+        text, meta = page.get("ocr_text", ""), page.get("content_meta")
+        new = new_service.predict_one(page["page_id"], text, content_meta=meta)
+        old = old_service.predict_one(page["page_id"], text, content_meta=meta)
         gt = truth[_key(folder)].get(number, "KEEP") if number is not None else "KEEP"
-        if number is not None:
-            seen.add((_key(folder), number))
-        if r.flag != "KEEP" or gt != "KEEP":
+        new_result, old_result = result_of(new.flag, gt), result_of(old.flag, gt)
+        tally["new"][new_result] += 1
+        tally["old"][old_result] += 1
+        if new.flag != old.flag:
+            right = "new" if new_result == "correct" else "old" if old_result == "correct" else "neither"
             rows.append({
                 "folder name": folder, "image name": image,
-                "model": r.flag, "model subtype": r.subclass or "",
-                "ground truth": gt, "result": result_of(r.flag, gt),
+                "new model": new.flag, "new subtype": new.subclass or "",
+                "old model": old.flag, "old subtype": old.subclass or "",
+                "ground truth": gt, "new result": new_result, "old result": old_result, "right": right,
             })
         if i % 50 == 0 or i == len(pages):
-            print(f"  [{i}/{len(pages)}] flagged", flush=True)
-
-    for chart, chart_pages in truth.items():
-        if chart not in charts_found:
-            continue
-        for number, gt in sorted(chart_pages.items()):
-            if gt != "KEEP" and (chart, number) not in seen:
-                rows.append({
-                    "folder name": names[chart], "image name": f"page {number}",
-                    "model": "", "model subtype": "", "ground truth": gt, "result": "no OCR page",
-                })
+            print(f"  [{i}/{len(pages)}] flagged, {len(rows)} differ", flush=True)
 
     out.parent.mkdir(parents=True, exist_ok=True)
     with out.open("w", encoding="utf-8-sig", newline="") as fh:
@@ -224,15 +227,14 @@ def main() -> int:
         writer.writeheader()
         writer.writerows(rows)
 
-    counts = Counter(row["result"] for row in rows)
-    truth_flagged = sum(1 for row in rows if row["ground truth"] != "KEEP")
-    caught = counts["correct"] + counts["wrong type"]
-    print(f"\nWrote {len(rows)} rows -> {out}")
-    print(f"Ground truth BLANK/JUNK pages: {truth_flagged}  caught: {caught}  "
-          f"missed: {counts['missed']}  no OCR page: {counts['no OCR page']}")
-    print(f"Model BLANK/JUNK on ground-truth KEEP pages (false flags): {counts['false flag']}")
-    for name in ("correct", "wrong type", "missed", "false flag", "no OCR page"):
-        print(f"  {name}: {counts[name]}")
+    right = Counter(row["right"] for row in rows)
+    print(f"\nWrote {len(rows)} pages where the models differ -> {out}")
+    print(f"  new model right: {right['new']}   old model right: {right['old']}   neither: {right['neither']}")
+    print(f"\nAll {len(pages)} pages, against the ground truth:")
+    print(f"  {'':12s} {'correct':>8s} {'missed':>8s} {'false flag':>11s} {'wrong type':>11s}")
+    for name in ("new", "old"):
+        c = tally[name]
+        print(f"  {name + ' model':12s} {c['correct']:8d} {c['missed']:8d} {c['false flag']:11d} {c['wrong type']:11d}")
     return 0
 
 
