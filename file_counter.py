@@ -194,14 +194,11 @@ try:
             print(f"  ... scanned {total_blobs_found} blobs", flush=True)
 
         blob_name = blob.name
-        relative_path = blob_name[len(PREFIX) :]
+        relative_path = blob_name[len(PREFIX) :].lstrip("/")
         parts = relative_path.split("/")
 
-        # Ignore files directly inside DEID_PNGs
-        if len(parts) < 2:
-            continue
-
-        folder_name = parts[0]
+        # Count each file in the sub folder it sits in (full path under PREFIX)
+        folder_name = "/".join(parts[:-1]) or "(files directly in PREFIX)"
         filename = parts[-1]
 
         if not filename.lower().endswith(EXTENSIONS):
