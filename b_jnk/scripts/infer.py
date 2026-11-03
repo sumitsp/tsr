@@ -88,6 +88,7 @@ COLUMNS = [
     "subclass_reason",
     "audit_tag",
     "confidence",
+    "raw_prob",
     "review_required",
     "p_keep",
     "p_blank",
@@ -386,8 +387,14 @@ def _load_pages(path: Path) -> list[dict[str, str]]:
     return pages
 
 
+def _raw_prob(r: InferenceResult) -> float | None:
+    """The model's own probability for the final flag (None: page skipped the model)."""
+    return {"KEEP": r.p_keep, "BLANK": r.p_blank, "JUNK": r.p_junk}.get(r.flag)
+
+
 def _row_from_result(r: InferenceResult) -> dict:
     row = r.to_dict()
+    row["raw_prob"] = "" if _raw_prob(r) is None else _raw_prob(r)
     row["review_required"] = int(bool(row["review_required"]))
     for k in ("p_keep", "p_blank", "p_junk"):
         if row.get(k) is None:
@@ -536,9 +543,13 @@ def main() -> int:
             subclass_counts[r.subclass] += 1
         review = " review" if r.review_required else ""
         label = f"{r.flag}/{r.subclass}" if r.subclass else r.flag
+        raw = (
+            f" raw={_raw_prob(r):.3f} [keep={r.p_keep:.3f} blank={r.p_blank:.3f} junk={r.p_junk:.3f}]"
+            if r.p_keep is not None else " raw=- (no model call)"
+        )
         print(
             f"[{i}/{total}] {r.page_id} → {label} "
-            f"(conf={r.confidence:.3f}{review}) | saved",
+            f"(conf={r.confidence:.3f}{raw}{review}) | saved",
             flush=True,
         )
 
